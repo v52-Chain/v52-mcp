@@ -55,6 +55,18 @@ jobs:
             ${{ steps.image.outputs.latest }}
             ${{ steps.image.outputs.sha }}
 
+      - name: Configure Azure to pull the private GHCR image
+        env:
+          GHCR_USERNAME: ${{ secrets.HSKMCP_REGISTRY_USERNAME }}
+          GHCR_PASSWORD: ${{ secrets.HSKMCP_REGISTRY_PASSWORD }}
+        run: |
+          az containerapp registry set \
+            --name hsk-mcp \
+            --resource-group ETH-2026 \
+            --server ghcr.io \
+            --username "$GHCR_USERNAME" \
+            --password "$GHCR_PASSWORD"
+
       - name: Deploy container image to Azure Container Apps
         uses: azure/container-apps-deploy-action@v2
         with:
