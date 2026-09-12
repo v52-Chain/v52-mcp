@@ -1,0 +1,33 @@
+{
+  "name": "v52-mcp",
+  "version": "1.0.0",
+  "description": "Servidor MCP y gateway de herramientas de Vector52. **Scaffold documental; implementación pendiente.**",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/v52-Chain/v52-mcp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/v52-Chain/v52-mcp/issues"
+  },
+  "homepage": "https://github.com/v52-Chain/v52-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
