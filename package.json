@@ -4,6 +4,7 @@
   "description": "Servidor MCP y gateway de herramientas de Vector52. **Scaffold documental; implementación pendiente.**",
   "main": "index.js",
   "scripts": {
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx src/index.ts",
     "start": "tsx src/index.ts"

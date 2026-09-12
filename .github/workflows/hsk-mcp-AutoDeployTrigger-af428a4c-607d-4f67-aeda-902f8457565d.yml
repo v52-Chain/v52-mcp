@@ -16,13 +16,14 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions: 
+    permissions:
       id-token: write #This is required for requesting the OIDC JWT Token
       contents: read #Required when GH token is used to authenticate with private repo
+      packages: write #Required to publish the image to GitHub Container Registry
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
@@ -31,19 +32,38 @@ jobs:
           tenant-id: ${{ secrets.HSKMCP_AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.HSKMCP_AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push container image to registry
+      - name: Set container image names
+        id: image
+        shell: bash
+        run: |
+          echo "latest=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hsk-mcp:latest" >> "$GITHUB_OUTPUT"
+          echo "sha=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hsk-mcp:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.latest }}
+            ${{ steps.image.outputs.sha }}
+
+      - name: Deploy container image to Azure Container Apps
         uses: azure/container-apps-deploy-action@v2
         with:
-          appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
-          registryUrl: 
+          imageToDeploy: ${{ steps.image.outputs.sha }}
+          registryUrl: ghcr.io
           registryUsername: ${{ secrets.HSKMCP_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.HSKMCP_REGISTRY_PASSWORD }}
           containerAppName: hsk-mcp
           resourceGroup: ETH-2026
-          imageToBuild: default/[parameters('containerAppName')]:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
+          targetPort: 8080
 
 
