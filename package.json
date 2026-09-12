@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx --test test/**/*.test.ts",
     "dev": "tsx src/index.ts",
+    "x402:test": "tsx src/scripts/test-x402-avalanche.ts",
     "start": "tsx src/index.ts"
   },
   "repository": {
@@ -24,6 +25,11 @@
   "dependencies": {
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
+    "@x402/core": "2.25.0",
+    "@x402/evm": "2.25.0",
+    "@x402/fetch": "2.25.0",
+    "dotenv": "17.2.3",
+    "viem": "2.56.3",
     "zod": "^4.6.2"
   },
   "devDependencies": {

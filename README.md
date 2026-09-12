@@ -22,3 +22,7 @@ Omar y Jhamil construirán en `v52` la vista Agent Access. Este repositorio debe
 - pago válido crea un solo job;
 - resultado cita IDs de evidencia;
 - replay no genera otro cobro.
+
+## Demo Avalanche Fuji x402
+
+La integración aislada de x402 y su guía de prueba están en [docs/X402_AVALANCHE_TEST.md](docs/X402_AVALANCHE_TEST.md). Usa únicamente Avalanche Fuji y USDC de prueba.

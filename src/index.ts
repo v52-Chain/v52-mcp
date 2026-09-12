@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import "dotenv/config";
+
 import {
   createMcpHandler,
   McpServer,
@@ -9,6 +11,12 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 
 import * as z from "zod/v4";
 
+import { fetchX402Resource } from "./x402/client.js";
+import { getX402ConfigurationStatus } from "./x402/config.js";
+import { toSafeError } from "./x402/errors.js";
+import { X402DemoService } from "./x402/server.js";
+import { getX402Status } from "./x402/status.js";
+
 
 /*
 |--------------------------------------------------------------------------
@@ -17,6 +25,7 @@ import * as z from "zod/v4";
 */
 
 const PORT = Number(process.env.PORT ?? 8080);
+const x402DemoService = new X402DemoService();
 
 
 /*
@@ -64,6 +73,47 @@ function createJhamilMcp() {
         ],
       };
     }
+  );
+
+  server.registerTool(
+    "avalanche_x402_fetch",
+    {
+      description:
+        "Accede a un recurso HTTP protegido por x402 y realiza un pago autorizado en Avalanche Fuji solo si cumple la política de gasto local.",
+      inputSchema: z.object({
+        url: z.string().url().describe("URL HTTPS permitida del recurso x402."),
+        maxPaymentUsdc: z
+          .string()
+          .regex(/^\d+(?:\.\d{1,6})?$/)
+          .optional()
+          .describe("Límite opcional del solicitante; nunca puede aumentar el límite del servidor."),
+      }),
+    },
+    async ({ url, maxPaymentUsdc }) => {
+      try {
+        const result = await fetchX402Resource({ url, maxPaymentUsdc });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: JSON.stringify(toSafeError(error), null, 2) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "avalanche_x402_status",
+    {
+      description:
+        "Muestra el estado público de la configuración x402 Avalanche Fuji sin firmar ni realizar pagos.",
+      inputSchema: z.object({}),
+    },
+    async () => ({
+      content: [{ type: "text", text: JSON.stringify(await getX402Status(), null, 2) }],
+    }),
   );
 
 
@@ -198,10 +248,24 @@ const httpServer = createServer(
             status: "ok",
             service: "jhamil-public-mcp",
             version: "1.0.0",
+            mcp: true,
+            x402: {
+              enabled: getX402ConfigurationStatus().configured,
+              network: "eip155:43113",
+            },
             timestamp: new Date().toISOString(),
           })
         );
 
+        return;
+      }
+
+      if (
+        pathname === "/demo/x402/premium-report" &&
+        req.method === "GET"
+      ) {
+
+        await x402DemoService.handle(req, res);
         return;
       }
 
@@ -271,7 +335,7 @@ const httpServer = createServer(
 
       console.error(
         "Error procesando request:",
-        error
+        error instanceof Error ? error.message : "unknown error"
       );
 
 
