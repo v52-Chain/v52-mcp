@@ -26,12 +26,15 @@ export type X402FetchResult = {
   data: unknown;
 };
 
+// stdout is reserved for JSON-RPC when this module runs inside the stdio MCP
+// server, so debug output always goes to stderr.
 function logX402(enabled: boolean, message: string, data?: Record<string, unknown>) {
-  if (enabled && data) {
-    console.info(`[x402] ${message}`, data);
+  if (!enabled) return;
+  if (data) {
+    console.error(`[x402] ${message}`, data);
     return;
   }
-  console.info(`[x402] ${message}`);
+  console.error(`[x402] ${message}`);
 }
 
 async function readResponse(response: Response): Promise<unknown> {

@@ -1,8 +1,7 @@
-import { atomicToUsdc, AVALANCHE_FUJI_NETWORK, AVALANCHE_FUJI_USDC_ADDRESS } from "../x402/config.js";
+import { atomicToUsdc, AVALANCHE_FUJI_NETWORK, AVALANCHE_FUJI_USDC_ADDRESS, V52_BACKEND_URL } from "../x402/config.js";
 import { X402Error } from "../x402/errors.js";
 import { fetchX402Resource, type X402FetchResult } from "../x402/client.js";
 
-const DEFAULT_BACKEND_URL = "https://v52-backend.onrender.com";
 const WALLET_FLOW_PATH = "/v1/agent/investigations/wallet-flow";
 
 export type Vector52AgentCapabilities = {
@@ -29,26 +28,8 @@ export type WalletFlowInput = {
   maxPaymentUsdc?: string;
 };
 
-export function getVector52BackendUrl(env: NodeJS.ProcessEnv = process.env): URL {
-  const raw = env.V52_BACKEND_URL?.trim() || DEFAULT_BACKEND_URL;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new X402Error("V52_BACKEND_CONFIGURATION_INVALID", "V52_BACKEND_URL no es una URL válida.");
-  }
-  const isLocalDevelopment =
-    process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(isLocalDevelopment && url.protocol === "http:")) {
-    throw new X402Error(
-      "V52_BACKEND_CONFIGURATION_INVALID",
-      "V52_BACKEND_URL debe usar HTTPS (HTTP solo se permite para localhost en desarrollo).",
-    );
-  }
-  url.pathname = url.pathname.replace(/\/$/, "");
-  url.search = "";
-  url.hash = "";
-  return url;
+export function getVector52BackendUrl(): URL {
+  return new URL(V52_BACKEND_URL);
 }
 
 async function readJson<T>(url: URL): Promise<T> {

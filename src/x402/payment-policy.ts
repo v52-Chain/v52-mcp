@@ -94,7 +94,7 @@ export function assertPaymentPolicy(
   if (requirement.network !== AVALANCHE_FUJI_NETWORK) {
     throw new X402Error("PAYMENT_REJECTED_NETWORK", "Solo se permite Avalanche Fuji eip155:43113.");
   }
-  if (!config.usdcAddress || !isAddress(String(requirement.asset ?? ""))) {
+  if (!isAddress(String(requirement.asset ?? ""))) {
     throw new X402Error("PAYMENT_REJECTED_ASSET", "El activo solicitado no es USDC Fuji configurado.");
   }
 

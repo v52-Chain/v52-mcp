@@ -4,7 +4,7 @@ import { HTTPFacilitatorClient, x402HTTPResourceServer, x402ResourceServer } fro
 import type { HTTPAdapter, HTTPRequestContext, RoutesConfig } from "@x402/core/http";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 
-import { loadX402Config, requireX402ServerConfig, type X402Config } from "./config.js";
+import { loadX402DemoConfig, type X402DemoConfig } from "./demo-config.js";
 import { X402Error } from "./errors.js";
 
 const PREMIUM_REPORT = {
@@ -49,9 +49,7 @@ function writeJson(response: ServerResponse, status: number, body: unknown, head
   response.end(JSON.stringify(body));
 }
 
-function buildDemoServer(config: X402Config): x402HTTPResourceServer {
-  requireX402ServerConfig(config);
-
+function buildDemoServer(config: X402DemoConfig): x402HTTPResourceServer {
   const facilitator = new HTTPFacilitatorClient({
     url: config.facilitatorUrl,
     timeoutMs: 15_000,
@@ -99,10 +97,10 @@ export class X402DemoService {
   private getServer() {
     if (!this.initialized) {
       this.initialized = (async () => {
-        const config = loadX402Config();
+        const config = loadX402DemoConfig();
         const server = buildDemoServer(config);
         await server.initialize();
-        if (config.debug) console.info("[x402] Fuji facilitator initialized");
+        if (config.debug) console.error("[x402] Fuji facilitator initialized");
         return server;
       })();
     }

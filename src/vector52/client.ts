@@ -3,8 +3,9 @@
  * the MCP contract documents as FREE tools: case_status, evidence_get,
  * package_verify and anchor_lookup (docs/CONTRATO-INTEGRACION.md "MCP
  * mapping"). These never sign or spend anything — no wallet, no payment
- * policy — they just proxy a GET/POST to the same V52_BACKEND_URL that
- * ./backend.ts uses for the paid wallet-flow tool.
+ * policy — they just proxy a GET/POST to the same fixed Vector52 backend
+ * (see getVector52BackendUrl in ./backend.ts) that the paid wallet-flow
+ * tool also targets.
  *
  * edge_explain and claim_audit are intentionally NOT implemented here: the
  * backend has no `GET /v1/cases/{id}/graph` and `POST /v1/paid/claim-audit`
@@ -50,7 +51,7 @@ async function backendRequest(path: string, init?: RequestInit): Promise<unknown
   } catch {
     throw new X402Error(
       "VECTOR52_REQUEST_FAILED",
-      "No se pudo contactar a v52-backend. Verifica V52_BACKEND_URL y que el servicio esté arriba.",
+      "No se pudo contactar a v52-backend. Verifica que el servicio esté arriba.",
     );
   }
 

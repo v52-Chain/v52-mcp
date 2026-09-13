@@ -1,20 +1,40 @@
 {
   "name": "v52-mcp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Servidor MCP de Vector52 con investigaciones forenses pagadas mediante x402 en Avalanche Fuji.",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "bin": {
+    "v52-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    ".env.example",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"try{require('fs').chmodSync('dist/index.js',0o755)}catch{}\"",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm test",
     "test": "tsx --test test/**/*.test.ts",
     "dev": "tsx src/index.ts",
+    "x402:demo": "tsx src/scripts/serve-x402-demo.ts",
     "x402:test": "tsx src/scripts/test-x402-avalanche.ts",
-    "start": "tsx src/index.ts"
+    "start": "node dist/index.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/v52-Chain/v52-mcp.git"
   },
-  "keywords": [],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "x402",
+    "avalanche",
+    "vector52"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -23,7 +43,6 @@
   },
   "homepage": "https://github.com/v52-Chain/v52-mcp#readme",
   "dependencies": {
-    "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "@x402/core": "2.25.0",
     "@x402/evm": "2.25.0",

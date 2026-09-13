@@ -9,7 +9,7 @@ export async function getX402Status() {
     let balances: { avax?: string; usdc?: string } | undefined;
     let balanceError: string | undefined;
 
-    if (account && config.usdcAddress) {
+    if (account) {
       try {
         balances = await readWalletBalances(config, account.address);
       } catch {
@@ -18,28 +18,23 @@ export async function getX402Status() {
     }
 
     return {
-      configured: Boolean(config.usdcAddress && config.facilitatorUrl && account),
-      demoConfigured: Boolean(config.usdcAddress && config.facilitatorUrl && config.merchantAddress),
+      configured: Boolean(account),
       network: "Avalanche Fuji",
       chainId: config.chainId,
       x402Network: config.network,
       walletAddress: account?.address,
-      demoMerchantAddress: config.merchantAddress,
       usdcAddress: config.usdcAddress,
       maxPaymentUsdc: atomicToUsdc(config.maxPaymentAtomic),
       maxSessionSpendUsdc: atomicToUsdc(config.maxSessionSpendAtomic),
-      facilitatorConfigured: Boolean(config.facilitatorUrl),
       balances,
       balanceError,
     };
   } catch {
     return {
       configured: false,
-      demoConfigured: false,
       network: "Avalanche Fuji",
       chainId: 43113,
       x402Network: "eip155:43113",
-      facilitatorConfigured: false,
     };
   }
 }

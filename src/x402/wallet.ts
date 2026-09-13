@@ -42,10 +42,6 @@ export function getFujiPublicClient(config: X402Config) {
 }
 
 export async function readWalletBalances(config: X402Config, address: Address) {
-  if (!config.usdcAddress) {
-    return { avax: undefined, usdc: undefined };
-  }
-
   const client = getFujiPublicClient(config);
   const [avaxBalance, usdcBalance] = await Promise.all([
     client.getBalance({ address }),

@@ -3,7 +3,12 @@ import test from "node:test";
 
 import { getAddress } from "viem";
 
-import { AVALANCHE_FUJI_NETWORK, getX402ConfigurationStatus, type X402Config } from "../../src/x402/config.js";
+import {
+  AVALANCHE_FUJI_NETWORK,
+  getX402ConfigurationStatus,
+  loadX402Config,
+  type X402Config,
+} from "../../src/x402/config.js";
 import { X402Error } from "../../src/x402/errors.js";
 import {
   assertAllowedResourceUrl,
@@ -20,8 +25,6 @@ const config: X402Config = {
   network: AVALANCHE_FUJI_NETWORK,
   chainId: 43113,
   usdcAddress: USDC,
-  facilitatorUrl: "https://facilitator.payai.network",
-  merchantAddress: PAY_TO,
   agentPrivateKey: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   maxPaymentAtomic: 50_000n,
   maxSessionSpendAtomic: 100_000n,
@@ -77,14 +80,26 @@ test("unapproved and SSRF URLs are rejected", () => {
   expectCode(() => assertAllowedResourceUrl("https://untrusted.example", config), "URL_REJECTED");
 });
 
+test("the Vector52 backend is always an allowed payment target, even with no X402_ALLOWED_HOSTS set", () => {
+  const loaded = loadX402Config({
+    X402_AGENT_PRIVATE_KEY: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  });
+  assert.equal(loaded.allowedHosts.includes("v52-backend.onrender.com"), true);
+  assert.doesNotThrow(() =>
+    assertAllowedResourceUrl("https://v52-backend.onrender.com/v1/agent/investigations/wallet-flow", loaded),
+  );
+});
+
+test("a bare 64-char hex private key (no 0x prefix) is accepted", () => {
+  const loaded = loadX402Config({
+    X402_AGENT_PRIVATE_KEY: "a".repeat(64),
+  });
+  assert.equal(loaded.agentPrivateKey, `0x${"a".repeat(64)}`);
+});
+
 test("a private key is never included in serializable status", () => {
   const key = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  const status = getX402ConfigurationStatus({
-    X402_AGENT_PRIVATE_KEY: key,
-    X402_USDC_ADDRESS: USDC,
-    X402_FACILITATOR_URL: "https://facilitator.payai.network",
-    X402_MERCHANT_ADDRESS: PAY_TO,
-  });
+  const status = getX402ConfigurationStatus({ X402_AGENT_PRIVATE_KEY: key });
   assert.equal(JSON.stringify(status).includes(key), false);
 });
 

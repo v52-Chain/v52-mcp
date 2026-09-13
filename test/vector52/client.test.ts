@@ -3,8 +3,11 @@ import test from "node:test";
 
 import { X402Error } from "../../src/x402/errors.js";
 
-process.env.V52_BACKEND_URL = "http://127.0.0.1:8000";
-process.env.NODE_ENV = "development";
+// The real backend URL is now a fixed constant (no env override), so network
+// isolation for these tests comes from stubbing fetch itself: it always
+// fails, proving a request that passes validation actually reached the
+// network layer without ever calling out to v52-backend.onrender.com.
+globalThis.fetch = (() => Promise.reject(new Error("network disabled in tests"))) as typeof fetch;
 
 const { getAnchor, getCaseStatus, getCaseEvidence, verifyPackage } = await import("../../src/vector52/client.js");
 

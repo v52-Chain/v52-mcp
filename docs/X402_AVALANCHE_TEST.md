@@ -2,7 +2,7 @@
 
 ## Qué se añadió
 
-Este proyecto conserva su servidor MCP HTTP actual y añade un módulo aislado en `src/x402`. La demostración prueba el recorrido:
+El servidor MCP habla `stdio` y no expone HTTP. Este módulo aislado en `src/x402` se prueba con un fixture HTTP local independiente (`src/scripts/serve-x402-demo.ts`), ajeno al proceso MCP. La demostración prueba el recorrido:
 
 `cliente MCP → HTTP 402 → autorización EIP-3009 → facilitator → Avalanche Fuji → HTTP 200`.
 
@@ -38,15 +38,17 @@ Copy-Item .env.example .env
 npm install
 ```
 
-Completa solo estas variables en `.env`:
+Completa solo estas variables en `.env` (las demás del `.env.example`, como `AVALANCHE_RPC_URL`, ya tienen default y no hace falta tocarlas):
 
 ```dotenv
-X402_AGENT_PRIVATE_KEY=0x... # wallet de desarrollo, nunca una clave con fondos reales
-X402_MERCHANT_ADDRESS=0x...  # dirección Fuji que recibirá los USDC de prueba
-X402_ALLOWED_HOSTS=           # hosts HTTPS externos permitidos, separados por coma
-X402_ALLOW_LOCALHOST=true     # solo durante la prueba local
+X402_AGENT_PRIVATE_KEY=0x...     # wallet de desarrollo, nunca una clave con fondos reales
+X402_FACILITATOR_URL=https://facilitator.payai.network  # solo lo usa este fixture local
+X402_MERCHANT_ADDRESS=0x...      # dirección Fuji que recibirá los USDC de prueba (solo este fixture)
+X402_ALLOW_LOCALHOST=true        # solo durante la prueba local
 X402_DEBUG=true
 ```
+
+`X402_FACILITATOR_URL` y `X402_MERCHANT_ADDRESS` **no** los necesita el servidor MCP ni sus tools en producción: solo los lee este fixture local (`src/x402/demo-config.ts`), donde el propio proceso hace de merchant de prueba. En el flujo real, `v52-backend` es quien habla con su propio facilitator del lado servidor.
 
 No subas `.env`; ya está ignorado por Git. Para una prueba local del endpoint interno, deja `X402_DEMO_URL=http://localhost:8080/demo/x402/premium-report` y activa `X402_ALLOW_LOCALHOST=true`. Esta excepción se desactiva automáticamente cuando `NODE_ENV=production`.
 
@@ -54,10 +56,10 @@ Consigue AVAX de Fuji para la wallet de desarrollo desde el faucet oficial de Av
 
 ## Ejecutar la prueba
 
-Terminal 1:
+Terminal 1 (levanta solo el fixture HTTP de prueba, no el servidor MCP):
 
 ```powershell
-npm run dev
+npm run x402:demo
 ```
 
 Terminal 2, para comprobar el challenge sin pagar:
@@ -106,25 +108,9 @@ Para una API externa, añade primero su host exacto a `X402_ALLOWED_HOSTS` y usa
 
 No hay infraestructura distribuida para compartir ese contador entre réplicas de Railway. Para una política multiinstancia se necesita almacenamiento transaccional centralizado antes de aumentar el alcance del agente.
 
-## Railway
+## Despliegue
 
-No se modificó ni activó ningún despliegue. Cuando decidas publicar, agrega en Railway:
-
-```text
-AVALANCHE_RPC_URL
-AVALANCHE_CHAIN_ID=43113
-X402_NETWORK=eip155:43113
-X402_USDC_ADDRESS
-X402_FACILITATOR_URL
-X402_AGENT_PRIVATE_KEY
-X402_MERCHANT_ADDRESS
-X402_MAX_PAYMENT_USDC
-X402_MAX_SESSION_SPEND_USDC
-X402_ALLOWED_HOSTS
-X402_DEBUG
-```
-
-En producción no definas `X402_ALLOW_LOCALHOST=true`. Para que un agente pueda comprar un recurso publicado en Railway, añade el hostname público exacto de Railway a `X402_ALLOWED_HOSTS` y usa esa URL, no `localhost`.
+El servidor MCP habla `stdio`, no HTTP: no se despliega como servicio de red (ni en Railway ni en ningún otro PaaS). Un cliente MCP local lo lanza como subproceso con `npx v52-mcp` o `node dist/index.js` (ver el README, sección "Conectar el MCP a un cliente local"). Solo necesitas exportar `X402_AGENT_PRIVATE_KEY` en el entorno donde corra ese proceso; el resto de variables `X402_*` tienen default o son exclusivas de este fixture de pruebas local.
 
 ## Diagnóstico
 
