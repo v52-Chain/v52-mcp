@@ -157,7 +157,10 @@ export function getX402ConfigurationStatus(env: NodeJS.ProcessEnv = process.env)
   try {
     const config = loadX402Config(env);
     return {
-      configured: Boolean(config.usdcAddress && config.facilitatorUrl && config.merchantAddress && config.agentPrivateKey),
+      configured: Boolean(config.usdcAddress && config.facilitatorUrl && config.agentPrivateKey),
+      demoConfigured: Boolean(
+        config.usdcAddress && config.facilitatorUrl && config.merchantAddress,
+      ),
       network: config.network,
       chainId: config.chainId,
       facilitatorConfigured: Boolean(config.facilitatorUrl),
@@ -169,6 +172,7 @@ export function getX402ConfigurationStatus(env: NodeJS.ProcessEnv = process.env)
   } catch {
     return {
       configured: false,
+      demoConfigured: false,
       network: AVALANCHE_FUJI_NETWORK,
       chainId: AVALANCHE_FUJI_CHAIN_ID,
       facilitatorConfigured: false,

@@ -1,7 +1,7 @@
 {
   "name": "v52-mcp",
-  "version": "1.0.0",
-  "description": "Servidor MCP y gateway de herramientas de Vector52. **Scaffold documental; implementación pendiente.**",
+  "version": "1.1.0",
+  "description": "Servidor MCP de Vector52 con investigaciones forenses pagadas mediante x402 en Avalanche Fuji.",
   "main": "index.js",
   "scripts": {
     "build": "tsc",

@@ -1,115 +1,105 @@
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 
 import "dotenv/config";
-
-import {
-  createMcpHandler,
-  McpServer,
-} from "@modelcontextprotocol/server";
-
 import { toNodeHandler } from "@modelcontextprotocol/node";
-
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
+import {
+  getVector52BackendStatus,
+  investigateVector52WalletFlow,
+} from "./vector52/backend.js";
 import { fetchX402Resource } from "./x402/client.js";
 import { getX402ConfigurationStatus } from "./x402/config.js";
 import { toSafeError } from "./x402/errors.js";
 import { X402DemoService } from "./x402/server.js";
 import { getX402Status } from "./x402/status.js";
 
-
-/*
-|--------------------------------------------------------------------------
-| Configuración
-|--------------------------------------------------------------------------
-*/
-
 const PORT = Number(process.env.PORT ?? 8080);
+const SERVICE_NAME = "vector52-mcp";
+const VERSION = "1.1.0";
 const x402DemoService = new X402DemoService();
 
+const toolCatalog = [
+  {
+    name: "vector52_status",
+    description: "Verifica backend, canal x402 y precio anunciado sin realizar pagos.",
+    payment: "FREE" as const,
+  },
+  {
+    name: "vector52_wallet_flow",
+    description: "Investiga ingresos y egresos de una wallet mediante el backend de Vector52.",
+    payment: "X402" as const,
+  },
+  {
+    name: "avalanche_x402_status",
+    description: "Consulta configuración y balances públicos de la wallet agente en Fuji.",
+    payment: "FREE" as const,
+  },
+] as const;
 
-/*
-|--------------------------------------------------------------------------
-| Crear MCP Server
-|--------------------------------------------------------------------------
-*/
+function jsonText(value: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+}
 
-function createJhamilMcp() {
+function jsonError(error: unknown) {
+  return { ...jsonText(toSafeError(error)), isError: true };
+}
 
-  const server = new McpServer({
-    name: "jhamil-public-mcp",
-    version: "1.0.0",
-  });
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | TOOL: saludar
-  |--------------------------------------------------------------------------
-  */
+function createVector52Mcp() {
+  const server = new McpServer({ name: SERVICE_NAME, version: VERSION });
 
   server.registerTool(
     "saludar",
     {
-      description:
-        "Saluda a una persona utilizando su nombre.",
-
-      inputSchema: z.object({
-        nombre: z
-          .string()
-          .describe("Nombre de la persona"),
-      }),
+      description: "Comprueba la comunicación básica con el MCP de Vector52.",
+      inputSchema: z.object({ nombre: z.string().min(1).max(80) }),
     },
-
-    async ({ nombre }) => {
-
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              `Hola ${nombre}. El MCP de Jhamil funciona correctamente 🚀`,
-          },
-        ],
-      };
-    }
+    async ({ nombre }) =>
+      jsonText({ message: `Hola ${nombre}. Vector52 MCP está conectado.`, service: SERVICE_NAME }),
   );
 
   server.registerTool(
-    "avalanche_x402_fetch",
+    "vector52_status",
+    {
+      description: "Verifica la comunicación MCP → backend y muestra el precio x402 sin pagar.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const [backend, x402] = await Promise.all([
+        getVector52BackendStatus(),
+        getX402Status(),
+      ]);
+      return jsonText({
+        service: SERVICE_NAME,
+        status: backend.ready && x402.configured ? "READY" : "DEGRADED",
+        backend,
+        x402,
+      });
+    },
+  );
+
+  server.registerTool(
+    "vector52_wallet_flow",
     {
       description:
-        "Accede a un recurso HTTP protegido por x402 y realiza un pago autorizado en Avalanche Fuji solo si cumple la política de gasto local.",
+        "Ejecuta una investigación de wallet en Vector52. Descubre el precio, valida USDC/Fuji y paga una sola petición mediante x402.",
       inputSchema: z.object({
-        url: z.string().url().describe("URL HTTPS permitida del recurso x402."),
-        maxPaymentUsdc: z
-          .string()
-          .regex(/^\d+(?:\.\d{1,6})?$/)
-          .optional()
-          .describe("Límite opcional del solicitante; nunca puede aumentar el límite del servidor."),
-        method: z
-          .enum(["GET", "POST"])
-          .optional()
-          .describe(
-            "Método HTTP del recurso. Por defecto GET. Usa POST para endpoints x402 que requieren body, como POST /v1/agent/investigations/wallet-flow de v52-backend.",
-          ),
-        body: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Cuerpo JSON opcional, solo aplicable cuando method es POST."),
+        targetAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+        limit: z.number().int().min(1).max(100).optional(),
+        fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        maxPaymentUsdc: z.string().regex(/^\d+(?:\.\d{1,6})?$/).optional(),
       }),
     },
-    async ({ url, maxPaymentUsdc, method, body }) => {
+    async input => {
       try {
-        const result = await fetchX402Resource({ url, maxPaymentUsdc, method, body });
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
+        if (input.fromDate && input.toDate && input.fromDate > input.toDate) {
+          throw new Error("fromDate debe ser anterior o igual a toDate.");
+        }
+        return jsonText(await investigateVector52WalletFlow(input));
       } catch (error) {
-        return {
-          content: [{ type: "text", text: JSON.stringify(toSafeError(error), null, 2) }],
-          isError: true,
-        };
+        return jsonError(error);
       }
     },
   );
@@ -117,293 +107,128 @@ function createJhamilMcp() {
   server.registerTool(
     "avalanche_x402_status",
     {
-      description:
-        "Muestra el estado público de la configuración x402 Avalanche Fuji sin firmar ni realizar pagos.",
+      description: "Muestra configuración y balances públicos en Avalanche Fuji sin firmar ni pagar.",
       inputSchema: z.object({}),
     },
-    async () => ({
-      content: [{ type: "text", text: JSON.stringify(await getX402Status(), null, 2) }],
-    }),
+    async () => jsonText(await getX402Status()),
   );
 
-
-  /*
-  |--------------------------------------------------------------------------
-  | TOOL: estado_servidor
-  |--------------------------------------------------------------------------
-  */
+  // Herramienta avanzada para diagnóstico. En producto debe usarse
+  // vector52_wallet_flow, que fija el destino y descubre el precio.
+  server.registerTool(
+    "avalanche_x402_fetch",
+    {
+      description: "Diagnóstico avanzado: solicita una URL x402 incluida en la allowlist local.",
+      inputSchema: z.object({
+        url: z.string().url(),
+        maxPaymentUsdc: z.string().regex(/^\d+(?:\.\d{1,6})?$/).optional(),
+        method: z.enum(["GET", "POST"]).optional(),
+        body: z.record(z.string(), z.unknown()).optional(),
+      }),
+    },
+    async input => {
+      try {
+        return jsonText(await fetchX402Resource(input));
+      } catch (error) {
+        return jsonError(error);
+      }
+    },
+  );
 
   server.registerTool(
     "estado_servidor",
-    {
-      description:
-        "Comprueba si el servidor MCP de Jhamil está funcionando.",
-
-      inputSchema: z.object({}),
-    },
-
-    async () => {
-
-      return {
-        content: [
-          {
-            type: "text",
-
-            text: JSON.stringify(
-              {
-                status: "online",
-                server: "jhamil-public-mcp",
-                version: "1.0.0",
-                timestamp: new Date().toISOString(),
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
+    { description: "Alias de compatibilidad para comprobar el MCP.", inputSchema: z.object({}) },
+    async () =>
+      jsonText({ status: "online", server: SERVICE_NAME, version: VERSION, timestamp: new Date().toISOString() }),
   );
-
 
   return server;
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| MCP Handler
-|--------------------------------------------------------------------------
-*/
-
-const mcpHandler = createMcpHandler(
-  () => createJhamilMcp(),
-  {
-    responseMode: "json",
-  }
-);
-
-
+const mcpHandler = createMcpHandler(() => createVector52Mcp(), { responseMode: "json" });
 const nodeMcpHandler = toNodeHandler(mcpHandler);
 
+function sendJson(res: ServerResponse, status: number, body: unknown) {
+  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(body));
+}
 
-/*
-|--------------------------------------------------------------------------
-| HTTP Server
-|--------------------------------------------------------------------------
-*/
+const httpServer = createServer(async (req, res) => {
+  try {
+    const requestUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const pathname = requestUrl.pathname;
 
-const httpServer = createServer(
-  async (req, res) => {
+    // El proceso contiene una wallet: ningún navegador debe poder invocarlo vía CORS.
+    if (req.headers.origin) {
+      sendJson(res, 403, { error: "Origin not allowed" });
+      return;
+    }
 
-    try {
-
-      /*
-      |--------------------------------------------------------------------------
-      | Obtener pathname
-      |--------------------------------------------------------------------------
-      |
-      | Esto hace que también funcionen correctamente URLs que
-      | eventualmente puedan incluir parámetros.
-      |
-      */
-
-      const requestUrl = new URL(
-        req.url ?? "/",
-        `http://${req.headers.host ?? "localhost"}`
-      );
-
-      const pathname = requestUrl.pathname;
-
-
-      /*
-      |--------------------------------------------------------------------------
-      | Protección Origin
-      |--------------------------------------------------------------------------
-      */
-
-      if (req.headers.origin) {
-
-        res.writeHead(403, {
-          "Content-Type": "application/json",
-        });
-
-        res.end(
-          JSON.stringify({
-            error: "Origin not allowed",
-          })
-        );
-
-        return;
-      }
-
-
-      /*
-      |--------------------------------------------------------------------------
-      | Health Check
-      |--------------------------------------------------------------------------
-      */
-
-      if (
-        pathname === "/health" &&
-        req.method === "GET"
-      ) {
-
-        res.writeHead(200, {
-          "Content-Type": "application/json",
-        });
-
-        res.end(
-          JSON.stringify({
-            status: "ok",
-            service: "jhamil-public-mcp",
-            version: "1.0.0",
-            mcp: true,
-            x402: {
-              enabled: getX402ConfigurationStatus().configured,
-              network: "eip155:43113",
-            },
-            timestamp: new Date().toISOString(),
-          })
-        );
-
-        return;
-      }
-
-      if (
-        pathname === "/demo/x402/premium-report" &&
-        req.method === "GET"
-      ) {
-
-        await x402DemoService.handle(req, res);
-        return;
-      }
-
-
-      /*
-      |--------------------------------------------------------------------------
-      | MCP Endpoint
-      |--------------------------------------------------------------------------
-      */
-
-      if (pathname === "/mcp") {
-
-        await nodeMcpHandler(req, res);
-
-        return;
-      }
-
-
-      /*
-      |--------------------------------------------------------------------------
-      | Home
-      |--------------------------------------------------------------------------
-      */
-
-      if (
-        pathname === "/" &&
-        req.method === "GET"
-      ) {
-
-        res.writeHead(200, {
-          "Content-Type": "application/json",
-        });
-
-        res.end(
-          JSON.stringify({
-            name: "Jhamil MCP",
-            status: "online",
-            version: "1.0.0",
-            mcp: "/mcp",
-            health: "/health",
-          })
-        );
-
-        return;
-      }
-
-
-      /*
-      |--------------------------------------------------------------------------
-      | 404
-      |--------------------------------------------------------------------------
-      */
-
-      res.writeHead(404, {
-        "Content-Type": "application/json",
+    if (pathname === "/health" && req.method === "GET") {
+      sendJson(res, 200, {
+        status: "ok",
+        service: SERVICE_NAME,
+        version: VERSION,
+        mcp: true,
+        x402: {
+          enabled: getX402ConfigurationStatus().configured,
+          network: "eip155:43113",
+        },
+        timestamp: new Date().toISOString(),
       });
-
-      res.end(
-        JSON.stringify({
-          error: "Not Found",
-        })
-      );
-
+      return;
     }
 
-    catch (error) {
-
-      console.error(
-        "Error procesando request:",
-        error instanceof Error ? error.message : "unknown error"
-      );
-
-
-      /*
-       * Evitamos escribir otra respuesta si
-       * MCP ya comenzó a enviar headers.
-       */
-
-      if (!res.headersSent) {
-
-        res.writeHead(500, {
-          "Content-Type": "application/json",
-        });
-
-      }
-
-
-      if (!res.writableEnded) {
-
-        res.end(
-          JSON.stringify({
-            error: "Internal Server Error",
-          })
-        );
-
-      }
+    if (pathname === "/capabilities" && req.method === "GET") {
+      const backend = await getVector52BackendStatus();
+      sendJson(res, 200, {
+        status: backend.ready ? "READY" : "DEGRADED",
+        service: SERVICE_NAME,
+        version: VERSION,
+        mcpEndpoint: "/mcp",
+        direction: "AGENT_TO_MCP_TO_BACKEND",
+        backend,
+        tools: toolCatalog.map(tool => ({
+          ...tool,
+          ...(tool.name === "vector52_wallet_flow" && backend.reachable
+            ? { priceAtomic: backend.capabilities?.amount_atomic }
+            : {}),
+        })),
+      });
+      return;
     }
+
+    if (pathname === "/demo/x402/premium-report" && req.method === "GET") {
+      await x402DemoService.handle(req, res);
+      return;
+    }
+
+    if (pathname === "/mcp") {
+      await nodeMcpHandler(req, res);
+      return;
+    }
+
+    if (pathname === "/" && req.method === "GET") {
+      sendJson(res, 200, {
+        name: "Vector52 MCP",
+        status: "online",
+        version: VERSION,
+        mcp: "/mcp",
+        health: "/health",
+        capabilities: "/capabilities",
+      });
+      return;
+    }
+
+    sendJson(res, 404, { error: "Not Found" });
+  } catch (error) {
+    console.error("Error procesando request:", error instanceof Error ? error.message : "unknown error");
+    if (!res.headersSent) sendJson(res, 500, { error: "Internal Server Error" });
+    else if (!res.writableEnded) res.end();
   }
-);
+});
 
-
-/*
-|--------------------------------------------------------------------------
-| Start Server
-|--------------------------------------------------------------------------
-|
-| IMPORTANTE:
-|
-| Azure Container Apps necesita 0.0.0.0.
-| NO usar 127.0.0.1 en producción.
-|
-*/
-
-httpServer.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-
-    console.log("");
-    console.log("=======================================");
-    console.log("🚀 JHAMIL MCP ONLINE");
-    console.log("=======================================");
-    console.log(`Port:   ${PORT}`);
-    console.log(`MCP:    /mcp`);
-    console.log(`Health: /health`);
-    console.log("Listening on 0.0.0.0");
-    console.log("=======================================");
-    console.log("");
-
-  }
-);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`Vector52 MCP ${VERSION} online on 0.0.0.0:${PORT}`);
+  console.log("MCP: /mcp | Health: /health | Capabilities: /capabilities");
+});

@@ -8,9 +8,9 @@ Servidor HTTP compatible con Model Context Protocol (MCP) para Vector52.
 
 - Endpoint MCP HTTP: `POST /mcp`.
 - Estado del servicio: `GET /health`.
-- Demo de recurso de pago x402: `GET /demo/x402/premium-report`.
-- Herramientas MCP gratuitas: `saludar` y `estado_servidor`.
-- Herramientas x402: `avalanche_x402_status` y `avalanche_x402_fetch`.
+- Capacidades verificables para backend/frontend: `GET /capabilities`.
+- Herramientas de producto: `vector52_status` y `vector52_wallet_flow`.
+- Herramientas de diagnóstico: `avalanche_x402_status` y `avalanche_x402_fetch`.
 - Política local que valida red, token, precio, destinatario y URL antes de firmar.
 
 ## Arquitectura
@@ -20,7 +20,7 @@ Codex / cliente MCP
         |
         | MCP HTTP (/mcp)
         v
-v52-mcp ── avalanche_x402_fetch ──> recurso x402
+v52-mcp ── vector52_wallet_flow ──> v52-backend
    |                                      |
    |                                      | HTTP 402 + PAYMENT-REQUIRED
    |                                      v
@@ -57,6 +57,7 @@ curl.exe http://localhost:8080/health
 | --- | --- |
 | `GET /` | Información básica del servidor. |
 | `GET /health` | Estado y configuración pública de x402. |
+| `GET /capabilities` | Handshake seguro, backend objetivo, tools y precio anunciado. |
 | `POST /mcp` | Endpoint Streamable HTTP para clientes MCP. |
 | `GET /demo/x402/premium-report` | Recurso protegido por x402; primero devuelve `402`. |
 
@@ -88,6 +89,7 @@ X402_MAX_SESSION_SPEND_USDC=0.10
 X402_ALLOW_LOCALHOST=true
 X402_DEMO_URL=http://localhost:8080/demo/x402/premium-report
 X402_DEBUG=false
+V52_BACKEND_URL=https://v52-backend.onrender.com
 ```
 
 | Variable | Propósito |
@@ -98,6 +100,7 @@ X402_DEBUG=false
 | `X402_MAX_SESSION_SPEND_USDC` | Tope acumulado por proceso; por defecto `0.10`. |
 | `X402_ALLOWED_HOSTS` | Lista separada por comas de hosts HTTPS externos que la herramienta puede pagar. |
 | `X402_ALLOW_LOCALHOST` | Permite `localhost` solo en desarrollo. Se desactiva en producción. |
+| `V52_BACKEND_URL` | Backend fijo que consume la tool de Vector52; no lo elige el prompt del agente. |
 
 El contrato de USDC Fuji configurado es `0x5425890298aed601595a70AB815c96711a31Bc65` y usa 6 decimales. Los tokens de testnet no tienen valor real; consulta la [documentación de Circle](https://developers.circle.com/stablecoins/usdc-contract-addresses).
 
@@ -107,10 +110,12 @@ El contrato de USDC Fuji configurado es `0x5425890298aed601595a70AB815c96711a31B
 | --- | --- | --- |
 | `saludar` | `{ "nombre": "Ana" }` | Devuelve un saludo. |
 | `estado_servidor` | `{}` | Devuelve estado y timestamp. |
+| `vector52_status` | `{}` | Verifica MCP, backend, precio y saldo sin pagar. |
+| `vector52_wallet_flow` | `{ "targetAddress": "0x…", "limit": 25 }` | Descubre el precio y ejecuta una investigación pagada por x402. |
 | `avalanche_x402_status` | `{}` | Muestra configuración pública, dirección del agente y balances. No firma ni paga. |
 | `avalanche_x402_fetch` | `{ "url": "…", "maxPaymentUsdc": "0.01" }` | Solicita un recurso x402 permitido y puede efectuar un pago. |
 
-`maxPaymentUsdc` es opcional, pero solo puede disminuir el tope configurado en el servidor; nunca aumentarlo.
+`maxPaymentUsdc` es opcional, pero solo puede disminuir el tope configurado en el servidor; nunca aumentarlo. Para integración de producto usa `vector52_wallet_flow`: la herramienta genérica queda solo para diagnóstico.
 
 ## Probar x402 sin Codex
 
