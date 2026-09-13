@@ -11,10 +11,16 @@ import {
 import { fetchX402Resource } from "./x402/client.js";
 import { toSafeError } from "./x402/errors.js";
 import { getX402Status } from "./x402/status.js";
-import { getAnchor, getCaseEvidence, getCaseStatus, verifyPackage } from "./vector52/client.js";
+import {
+  anchorCase,
+  getAnchor,
+  getCaseEvidence,
+  getCaseStatus,
+  verifyPackage,
+} from "./vector52/client.js";
 
 const SERVICE_NAME = "vector52-mcp";
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 function jsonText(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -136,6 +142,39 @@ function createVector52Mcp() {
     async ({ manifestRoot }) => {
       try {
         return jsonText(await getAnchor(manifestRoot));
+      } catch (error) {
+        return jsonError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "case_anchor",
+    {
+      description:
+        "Ancla en HSK (V52EvidenceRegistry) el manifest de un caso ya generado por Vector52 " +
+        "(POST /v1/cases/{case_id}/anchor). Este MCP no firma ni transmite nada on-chain: solo " +
+        "envía el case_id (y opcionalmente el manifest_root que reemplaza) al backend, que " +
+        "busca su registro interno de esa investigación, calcula manifest_root = " +
+        "sha256(manifest.json) desde el .v52.zip ya construido y ejecuta la transacción " +
+        "anchorCase() con su propia llave firmante configurada (HSK_ANCHOR_PRIVATE_KEY). " +
+        "Devuelve tx_hash, block_number y las URLs del explorador. Requiere que el caso ya " +
+        "tenga un paquete .v52.zip generado (ver case_status) y que el backend tenga el " +
+        "anclaje HSK configurado (HSK_NETWORK=testnet|mainnet); si no, responde 503.",
+      inputSchema: z.object({
+        caseId: z.string().min(1),
+        supersedes: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{64}$/)
+          .optional()
+          .describe(
+            "manifest_root (0x + 64 hex) de un anchor previo que este reemplaza. Omitir para un primer anclaje.",
+          ),
+      }),
+    },
+    async ({ caseId, supersedes }) => {
+      try {
+        return jsonText(await anchorCase({ caseId, supersedes }));
       } catch (error) {
         return jsonError(error);
       }

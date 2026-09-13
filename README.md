@@ -118,11 +118,14 @@ El contrato USDC de Fuji usado internamente es `0x5425890298aed601595a70AB815c96
 | `case_status` | `{ "caseId": "v52_..." }` | Llama `GET /v1/cases/{case_id}` en el backend de Vector52. Gratuito, sin pago. |
 | `evidence_get` | `{ "caseId": "v52_..." }` | Llama `GET /v1/cases/{case_id}/evidence` en el backend de Vector52. Gratuito, sin pago. |
 | `anchor_lookup` | `{ "manifestRoot": "0x..." }` | Llama `GET /v1/anchors/{manifest_root}` en el backend de Vector52. Consulta pública sobre HSK, gratuita, sin pago ni llave firmante. |
+| `case_anchor` | `{ "caseId": "case_...", "supersedes": "0x..." (opcional) }` | Llama `POST /v1/cases/{case_id}/anchor` en el backend de Vector52: ancla en HSK (`V52EvidenceRegistry`) el manifest de una investigación ya generada. Devuelve `tx_hash`, `block_number` y las URLs del explorador. |
 | `package_verify` | `{ "fileBase64": "...", "fileName": "case.v52.zip" }` | Sube el `.v52.zip` (Base64) a `POST /v1/verify` en el backend de Vector52 y devuelve `PASS`/`FAIL` con los errores de integridad. Gratuito, sin pago. |
 
 `maxPaymentUsdc` es opcional, pero solo puede disminuir el tope configurado en el servidor; nunca aumentarlo. Para integración de producto usa `vector52_wallet_flow`: la herramienta genérica queda solo para diagnóstico.
 
 De los 6 tools documentados en `CONTRATO-INTEGRACION.md` ("MCP mapping"), `edge_explain` y `claim_audit` **no** están implementados todavía: el backend no expone `GET /v1/cases/{id}/graph` ni un `POST /v1/paid/claim-audit` protegido con x402 (ver `v52-backend/docs/X402_MCP.md` §1, Nivel 3 "documentado pero no implementado en código"). Se agregarán cuando esos endpoints existan del lado del backend.
+
+`case_anchor` no forma parte de esa tabla de 6 tools (el mapping documenta solo la lectura, `anchor_lookup`), pero expone la contraparte de escritura que ya existe en el backend (`POST /v1/cases/{case_id}/anchor`, ver `v52-backend/docs/API.md` §3.16.1). Este MCP **no** ejecuta ninguna lógica on-chain: solo reenvía el `case_id` (y opcionalmente un `supersedes`) al backend, que localiza su propio registro interno de esa investigación, calcula `manifest_root` y firma/transmite la transacción `anchorCase()` con su propia llave configurada (`HSK_ANCHOR_PRIVATE_KEY`, ver `v52-backend/app/onchain/hsk_registry.py`). La respuesta que esta tool devuelve es exactamente la del backend: `tx_hash`, `block_number`, `explorer_tx_url`. Requiere que el caso ya tenga un `.v52.zip` generado y que el backend tenga el anclaje HSK configurado (`HSK_NETWORK=testnet|mainnet` en `v52-backend/.env`); si no, el backend responde `503` y la tool lo propaga como error.
 
 ## Probar x402 localmente (sin un cliente MCP)
 

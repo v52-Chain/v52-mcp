@@ -7,6 +7,16 @@
  * (see getVector52BackendUrl in ./backend.ts) that the paid wallet-flow
  * tool also targets.
  *
+ * case_anchor (POST /v1/cases/{case_id}/anchor) is the on-chain write
+ * counterpart of anchor_lookup: this MCP never touches HSK, signs a
+ * transaction or holds a private key for it — it only forwards the
+ * case_id (and an optional supersedes root) that the case's own audit
+ * already produced. The backend looks up its internal record for that
+ * case_id, computes manifest_root = sha256(manifest.json) from the
+ * already-built .v52.zip, and does the actual anchorCase() call against
+ * V52EvidenceRegistry (app/onchain/hsk_registry.py). All this tool returns
+ * is what the backend hands back: tx_hash, block_number, explorer URLs.
+ *
  * edge_explain and claim_audit are intentionally NOT implemented here: the
  * backend has no `GET /v1/cases/{id}/graph` and `POST /v1/paid/claim-audit`
  * is documented as pending in v52-backend/docs/X402_MCP.md §1 ("Nivel 3 …
@@ -94,6 +104,37 @@ export async function getAnchor(manifestRoot: string): Promise<unknown> {
     );
   }
   return backendRequest(`/v1/anchors/${manifestRoot.toLowerCase()}`);
+}
+
+/**
+ * case_anchor — POST /v1/cases/{case_id}/anchor (write, on-chain on HSK)
+ *
+ * This never signs or broadcasts anything itself: it hands the case_id (and
+ * an optional supersedes manifest_root) to v52-backend, which resolves its
+ * own internal case record, computes the manifest_root and performs the
+ * V52EvidenceRegistry.anchorCase() transaction with its own configured
+ * signer. The response includes tx_hash and both explorer URLs so the
+ * anchor can be verified independently of this MCP.
+ */
+export async function anchorCase(input: {
+  caseId: string;
+  supersedes?: string;
+}): Promise<unknown> {
+  const id = assertNonEmptyId(input.caseId, "caseId");
+  if (input.supersedes !== undefined && !MANIFEST_ROOT_RE.test(input.supersedes)) {
+    throw new X402Error(
+      "VECTOR52_REQUEST_INVALID",
+      "supersedes debe ser un hash sha256 de 32 bytes con prefijo 0x (64 caracteres hex).",
+    );
+  }
+
+  return backendRequest(`/v1/cases/${encodeURIComponent(id)}/anchor`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(
+      input.supersedes ? { supersedes: input.supersedes.toLowerCase() } : {},
+    ),
+  });
 }
 
 /** package_verify — POST /v1/verify (multipart upload of a .v52.zip package) */
