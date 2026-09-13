@@ -10,6 +10,7 @@ Servidor HTTP compatible con Model Context Protocol (MCP) para Vector52.
 - Estado del servicio: `GET /health`.
 - Capacidades verificables para backend/frontend: `GET /capabilities`.
 - Herramientas de producto: `vector52_status` y `vector52_wallet_flow`.
+- Herramientas gratuitas del contrato MCP: `case_status`, `evidence_get`, `anchor_lookup` y `package_verify`.
 - Herramientas de diagnóstico: `avalanche_x402_status` y `avalanche_x402_fetch`.
 - Política local que valida red, token, precio, destinatario y URL antes de firmar.
 
@@ -114,8 +115,14 @@ El contrato de USDC Fuji configurado es `0x5425890298aed601595a70AB815c96711a31B
 | `vector52_wallet_flow` | `{ "targetAddress": "0x…", "limit": 25 }` | Descubre el precio y ejecuta una investigación pagada por x402. |
 | `avalanche_x402_status` | `{}` | Muestra configuración pública, dirección del agente y balances. No firma ni paga. |
 | `avalanche_x402_fetch` | `{ "url": "…", "maxPaymentUsdc": "0.01" }` | Solicita un recurso x402 permitido y puede efectuar un pago. |
+| `case_status` | `{ "caseId": "v52_..." }` | Llama `GET /v1/cases/{case_id}` en `V52_BACKEND_URL`. Gratuito, sin pago. |
+| `evidence_get` | `{ "caseId": "v52_..." }` | Llama `GET /v1/cases/{case_id}/evidence` en `V52_BACKEND_URL`. Gratuito, sin pago. |
+| `anchor_lookup` | `{ "manifestRoot": "0x..." }` | Llama `GET /v1/anchors/{manifest_root}` en `V52_BACKEND_URL`. Consulta pública sobre HSK, gratuita, sin pago ni llave firmante. |
+| `package_verify` | `{ "fileBase64": "...", "fileName": "case.v52.zip" }` | Sube el `.v52.zip` (Base64) a `POST /v1/verify` en `V52_BACKEND_URL` y devuelve `PASS`/`FAIL` con los errores de integridad. Gratuito, sin pago. |
 
 `maxPaymentUsdc` es opcional, pero solo puede disminuir el tope configurado en el servidor; nunca aumentarlo. Para integración de producto usa `vector52_wallet_flow`: la herramienta genérica queda solo para diagnóstico.
+
+De los 6 tools documentados en `CONTRATO-INTEGRACION.md` ("MCP mapping"), `edge_explain` y `claim_audit` **no** están implementados todavía: el backend no expone `GET /v1/cases/{id}/graph` ni un `POST /v1/paid/claim-audit` protegido con x402 (ver `v52-backend/docs/X402_MCP.md` §1, Nivel 3 "documentado pero no implementado en código"). Se agregarán cuando esos endpoints existan del lado del backend.
 
 ## Probar x402 sin Codex
 

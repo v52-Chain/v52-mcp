@@ -14,6 +14,7 @@ import { getX402ConfigurationStatus } from "./x402/config.js";
 import { toSafeError } from "./x402/errors.js";
 import { X402DemoService } from "./x402/server.js";
 import { getX402Status } from "./x402/status.js";
+import { getAnchor, getCaseEvidence, getCaseStatus, verifyPackage } from "./vector52/client.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const SERVICE_NAME = "vector52-mcp";
@@ -34,6 +35,26 @@ const toolCatalog = [
   {
     name: "avalanche_x402_status",
     description: "Consulta configuración y balances públicos de la wallet agente en Fuji.",
+    payment: "FREE" as const,
+  },
+  {
+    name: "case_status",
+    description: "Estado y warnings de un caso Vector52 (GET /v1/cases/{case_id}).",
+    payment: "FREE" as const,
+  },
+  {
+    name: "evidence_get",
+    description: "Evidencia preservada de un caso Vector52 (GET /v1/cases/{case_id}/evidence).",
+    payment: "FREE" as const,
+  },
+  {
+    name: "anchor_lookup",
+    description: "Procedencia HSK de un expediente por su manifest_root (GET /v1/anchors/{manifest_root}).",
+    payment: "FREE" as const,
+  },
+  {
+    name: "package_verify",
+    description: "Verifica la integridad de un paquete .v52.zip (POST /v1/verify).",
     payment: "FREE" as const,
   },
 ] as const;
@@ -111,6 +132,76 @@ function createVector52Mcp() {
       inputSchema: z.object({}),
     },
     async () => jsonText(await getX402Status()),
+  );
+
+  // Herramientas gratuitas del contrato MCP (docs/CONTRATO-INTEGRACION.md
+  // "MCP mapping"). De las 6 tools documentadas, estas 4 son las únicas con
+  // un endpoint real detrás hoy; edge_explain y claim_audit no existen
+  // todavía en v52-backend (ver v52-backend/docs/X402_MCP.md §1, Nivel 3).
+  server.registerTool(
+    "case_status",
+    {
+      description: "Consulta el estado y warnings de un caso Vector52 (GET /v1/cases/{case_id}). Gratuito.",
+      inputSchema: z.object({ caseId: z.string().min(1) }),
+    },
+    async ({ caseId }) => {
+      try {
+        return jsonText(await getCaseStatus(caseId));
+      } catch (error) {
+        return jsonError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "evidence_get",
+    {
+      description:
+        "Lista la evidencia preservada de un caso Vector52 (GET /v1/cases/{case_id}/evidence). Gratuito.",
+      inputSchema: z.object({ caseId: z.string().min(1) }),
+    },
+    async ({ caseId }) => {
+      try {
+        return jsonText(await getCaseEvidence(caseId));
+      } catch (error) {
+        return jsonError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "anchor_lookup",
+    {
+      description:
+        "Busca la procedencia HSK de un expediente por su manifest_root (GET /v1/anchors/{manifest_root}). Consulta pública, gratuita, no requiere llave firmante.",
+      inputSchema: z.object({ manifestRoot: z.string().regex(/^0x[0-9a-fA-F]{64}$/) }),
+    },
+    async ({ manifestRoot }) => {
+      try {
+        return jsonText(await getAnchor(manifestRoot));
+      } catch (error) {
+        return jsonError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "package_verify",
+    {
+      description:
+        "Verifica la integridad de un paquete .v52.zip (POST /v1/verify): recalcula SHA-256 de cada archivo declarado y detecta alteraciones. Gratuito.",
+      inputSchema: z.object({
+        fileBase64: z.string().min(1),
+        fileName: z.string().optional(),
+      }),
+    },
+    async ({ fileBase64, fileName }) => {
+      try {
+        return jsonText(await verifyPackage({ fileBase64, fileName }));
+      } catch (error) {
+        return jsonError(error);
+      }
+    },
   );
 
   // Herramienta avanzada para diagnóstico. En producto debe usarse
