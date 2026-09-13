@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import "dotenv/config";
+import type { Address } from "viem";
 
 import {
   createMcpHandler,
@@ -16,6 +17,7 @@ import { getX402ConfigurationStatus } from "./x402/config.js";
 import { toSafeError } from "./x402/errors.js";
 import { X402DemoService } from "./x402/server.js";
 import { getX402Status } from "./x402/status.js";
+import { fetchVector52WalletFlow } from "./x402/vector52.js";
 
 
 /*
@@ -124,6 +126,61 @@ function createJhamilMcp() {
     async () => ({
       content: [{ type: "text", text: JSON.stringify(await getX402Status(), null, 2) }],
     }),
+  );
+
+  server.registerTool(
+    "vector52_wallet_flow",
+    {
+      description:
+        "Ejecuta la investigación wallet-flow de v52-backend pagando el endpoint protegido con x402 en Avalanche Fuji.",
+      inputSchema: z.object({
+        targetAddress: z
+          .string()
+          .regex(/^0x[a-fA-F0-9]{40}$/)
+          .describe("Dirección EVM objetivo a investigar."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Cantidad máxima de transferencias por dirección; por defecto 25."),
+        fromDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe("Fecha inicial YYYY-MM-DD."),
+        toDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe("Fecha final YYYY-MM-DD."),
+        maxPaymentUsdc: z
+          .string()
+          .regex(/^\d+(?:\.\d{1,6})?$/)
+          .optional()
+          .describe("Límite opcional del solicitante; nunca puede aumentar el límite del servidor."),
+      }),
+    },
+    async ({ targetAddress, limit, fromDate, toDate, maxPaymentUsdc }) => {
+      try {
+        const result = await fetchVector52WalletFlow({
+          targetAddress: targetAddress as Address,
+          limit,
+          fromDate,
+          toDate,
+          maxPaymentUsdc,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: JSON.stringify(toSafeError(error), null, 2) }],
+          isError: true,
+        };
+      }
+    },
   );
 
 

@@ -88,6 +88,40 @@ test("a private key is never included in serializable status", () => {
   assert.equal(JSON.stringify(status).includes(key), false);
 });
 
+test("Vector52 client config does not require merchant address", () => {
+  const status = getX402ConfigurationStatus({
+    X402_AGENT_PRIVATE_KEY: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    X402_USDC_ADDRESS: USDC,
+    VECTOR52_API_URL: "https://v52-backend.onrender.com",
+  });
+
+  assert.equal(status.configured, true);
+  assert.equal(status.clientConfigured, true);
+  assert.equal(status.demoConfigured, false);
+  assert.equal(status.facilitatorConfigured, false);
+  assert.equal(status.vector52ApiConfigured, true);
+});
+
+test("Vector52 localhost backend is allowed only when localhost is enabled", () => {
+  const enabled = getX402ConfigurationStatus({
+    X402_AGENT_PRIVATE_KEY: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    X402_USDC_ADDRESS: USDC,
+    X402_FACILITATOR_URL: "https://facilitator.example",
+    X402_ALLOW_LOCALHOST: "true",
+    VECTOR52_API_URL: "http://127.0.0.1:8000",
+  });
+  const disabled = getX402ConfigurationStatus({
+    X402_AGENT_PRIVATE_KEY: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    X402_USDC_ADDRESS: USDC,
+    X402_FACILITATOR_URL: "https://facilitator.example",
+    X402_ALLOW_LOCALHOST: "false",
+    VECTOR52_API_URL: "http://127.0.0.1:8000",
+  });
+
+  assert.equal(enabled.vector52ApiConfigured, true);
+  assert.equal(disabled.vector52ApiConfigured, false);
+});
+
 test("the process-local session limit is enforced", () => {
   resetSessionSpendForTests();
   const first = reserveSessionSpend(50_000n, config);

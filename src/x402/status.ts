@@ -18,10 +18,13 @@ export async function getX402Status() {
     }
 
     return {
-      configured: Boolean(config.usdcAddress && config.facilitatorUrl && config.merchantAddress && account),
+      configured: Boolean(config.usdcAddress && account),
+      clientConfigured: Boolean(config.usdcAddress && account),
+      demoConfigured: Boolean(config.usdcAddress && config.facilitatorUrl && config.merchantAddress),
       network: "Avalanche Fuji",
       chainId: config.chainId,
       x402Network: config.network,
+      vector52ApiUrl: config.vector52ApiUrl,
       walletAddress: account?.address,
       merchantAddress: config.merchantAddress,
       usdcAddress: config.usdcAddress,
@@ -34,6 +37,8 @@ export async function getX402Status() {
   } catch {
     return {
       configured: false,
+      clientConfigured: false,
+      demoConfigured: false,
       network: "Avalanche Fuji",
       chainId: 43113,
       x402Network: "eip155:43113",

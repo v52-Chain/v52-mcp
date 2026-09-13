@@ -14,6 +14,7 @@ export type X402Config = {
   rpcUrl: string;
   network: typeof AVALANCHE_FUJI_NETWORK;
   chainId: typeof AVALANCHE_FUJI_CHAIN_ID;
+  vector52ApiUrl?: string;
   usdcAddress?: Address;
   facilitatorUrl?: string;
   merchantAddress?: Address;
@@ -47,6 +48,33 @@ function parseOptionalUrl(value: string | undefined, name: string): string | und
     return url.toString().replace(/\/$/, "");
   } catch {
     throw new X402Error("X402_CONFIGURATION_INVALID", `${name} debe ser una URL HTTPS válida.`);
+  }
+}
+
+function parseOptionalResourceBaseUrl(
+  value: string | undefined,
+  name: string,
+  allowLocalhost: boolean,
+): string | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    if (url.protocol !== "https:" && !(allowLocalhost && url.protocol === "http:" && isLocal)) {
+      throw new Error("protocol");
+    }
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.search = "";
+    url.hash = "";
+    url.username = "";
+    url.password = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    throw new X402Error(
+      "X402_CONFIGURATION_INVALID",
+      `${name} debe ser una URL HTTPS publica o HTTP localhost en desarrollo.`,
+    );
   }
 }
 
@@ -109,6 +137,7 @@ export function loadX402Config(env: NodeJS.ProcessEnv = process.env): X402Config
     rpcUrl: parseOptionalUrl(env.AVALANCHE_RPC_URL, "AVALANCHE_RPC_URL") ?? AVALANCHE_FUJI_RPC_URL,
     network: AVALANCHE_FUJI_NETWORK,
     chainId: AVALANCHE_FUJI_CHAIN_ID,
+    vector52ApiUrl: parseOptionalResourceBaseUrl(env.VECTOR52_API_URL, "VECTOR52_API_URL", allowLocalhost),
     usdcAddress: parseOptionalAddress(env.X402_USDC_ADDRESS, "X402_USDC_ADDRESS"),
     facilitatorUrl: parseOptionalUrl(env.X402_FACILITATOR_URL, "X402_FACILITATOR_URL"),
     merchantAddress: parseOptionalAddress(env.X402_MERCHANT_ADDRESS, "X402_MERCHANT_ADDRESS"),
@@ -142,13 +171,12 @@ export function requireX402ServerConfig(config: X402Config): asserts config is X
 
 export function requireX402ClientConfig(config: X402Config): asserts config is X402Config & {
   usdcAddress: Address;
-  facilitatorUrl: string;
   agentPrivateKey: Hex;
 } {
-  if (!config.usdcAddress || !config.facilitatorUrl || !config.agentPrivateKey) {
+  if (!config.usdcAddress || !config.agentPrivateKey) {
     throw new X402Error(
       "X402_CLIENT_NOT_CONFIGURED",
-      "Configura X402_USDC_ADDRESS, X402_FACILITATOR_URL y X402_AGENT_PRIVATE_KEY antes de pagar.",
+      "Configura X402_USDC_ADDRESS y X402_AGENT_PRIVATE_KEY antes de pagar.",
     );
   }
 }
@@ -157,25 +185,42 @@ export function getX402ConfigurationStatus(env: NodeJS.ProcessEnv = process.env)
   try {
     const config = loadX402Config(env);
     return {
-      configured: Boolean(config.usdcAddress && config.facilitatorUrl && config.merchantAddress && config.agentPrivateKey),
+      configured: Boolean(config.usdcAddress && config.agentPrivateKey),
+      clientConfigured: Boolean(config.usdcAddress && config.agentPrivateKey),
+      demoConfigured: Boolean(config.usdcAddress && config.facilitatorUrl && config.merchantAddress),
       network: config.network,
       chainId: config.chainId,
       facilitatorConfigured: Boolean(config.facilitatorUrl),
       merchantConfigured: Boolean(config.merchantAddress),
       walletConfigured: Boolean(config.agentPrivateKey),
       assetConfigured: Boolean(config.usdcAddress),
+      vector52ApiConfigured: Boolean(config.vector52ApiUrl),
       maxPaymentUsdc: atomicToUsdc(config.maxPaymentAtomic),
     };
   } catch {
     return {
       configured: false,
+      clientConfigured: false,
+      demoConfigured: false,
       network: AVALANCHE_FUJI_NETWORK,
       chainId: AVALANCHE_FUJI_CHAIN_ID,
       facilitatorConfigured: false,
       merchantConfigured: false,
       walletConfigured: false,
       assetConfigured: false,
+      vector52ApiConfigured: false,
       maxPaymentUsdc: "0.05",
     };
+  }
+}
+
+export function requireVector52ApiConfig(config: X402Config): asserts config is X402Config & {
+  vector52ApiUrl: string;
+} {
+  if (!config.vector52ApiUrl) {
+    throw new X402Error(
+      "VECTOR52_API_NOT_CONFIGURED",
+      "Configura VECTOR52_API_URL para usar las herramientas Vector52 del MCP.",
+    );
   }
 }

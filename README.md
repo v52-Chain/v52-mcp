@@ -10,7 +10,7 @@ Servidor HTTP compatible con Model Context Protocol (MCP) para Vector52.
 - Estado del servicio: `GET /health`.
 - Demo de recurso de pago x402: `GET /demo/x402/premium-report`.
 - Herramientas MCP gratuitas: `saludar` y `estado_servidor`.
-- Herramientas x402: `avalanche_x402_status` y `avalanche_x402_fetch`.
+- Herramientas x402: `avalanche_x402_status`, `avalanche_x402_fetch` y `vector52_wallet_flow`.
 - Política local que valida red, token, precio, destinatario y URL antes de firmar.
 
 ## Arquitectura
@@ -37,7 +37,7 @@ La demo vende un reporte por `0.01 USDC` de prueba. El cliente recibe un `HTTP 4
 - Node.js 22 o superior.
 - npm.
 - Una wallet EVM de **desarrollo** con AVAX Fuji (gas) y USDC Fuji de prueba para pagar.
-- Una dirección pública Fuji receptora para `X402_MERCHANT_ADDRESS`.
+- Una dirección pública Fuji receptora para `X402_MERCHANT_ADDRESS` solo si vas a usar el demo `/demo/x402/premium-report`.
 
 ## Instalación y arranque
 
@@ -69,15 +69,16 @@ curl.exe http://localhost:8080/health
 AVALANCHE_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
 AVALANCHE_CHAIN_ID=43113
 
-# x402
+# x402 client settings used to pay protected resources
 X402_NETWORK=eip155:43113
 X402_USDC_ADDRESS=0x5425890298aed601595a70AB815c96711a31Bc65
-X402_FACILITATOR_URL=https://facilitator.payai.network
 
 # Wallet de desarrollo: 0x seguido de 64 caracteres hexadecimales.
 X402_AGENT_PRIVATE_KEY=0x...
 
-# Dirección pública Fuji que recibe el pago: 0x seguido de 40 caracteres.
+# Demo resource-server settings. These are needed only for
+# /demo/x402/premium-report, not for paying v52-backend.
+X402_FACILITATOR_URL=https://facilitator.payai.network
 X402_MERCHANT_ADDRESS=0x...
 
 # Límites de seguridad
@@ -88,16 +89,21 @@ X402_MAX_SESSION_SPEND_USDC=0.10
 X402_ALLOW_LOCALHOST=true
 X402_DEMO_URL=http://localhost:8080/demo/x402/premium-report
 X402_DEBUG=false
+
+# Backend Vector52 protegido por x402
+VECTOR52_API_URL=http://127.0.0.1:8000
 ```
 
 | Variable | Propósito |
 | --- | --- |
 | `X402_AGENT_PRIVATE_KEY` | Firma pagos. Debe pertenecer solo a una wallet de prueba. |
-| `X402_MERCHANT_ADDRESS` | Dirección pública que recibe el USDC de prueba. No es una clave privada. |
+| `X402_MERCHANT_ADDRESS` | Dirección pública que recibe el USDC de prueba en el demo local. No es necesaria para `vector52_wallet_flow`. |
+| `X402_FACILITATOR_URL` | Facilitator usado cuando `v52-mcp` sirve su propio recurso demo. El cliente `vector52_wallet_flow` paga el challenge emitido por `v52-backend` y no necesita esta variable. |
 | `X402_MAX_PAYMENT_USDC` | Tope por pago; por defecto `0.05`. |
 | `X402_MAX_SESSION_SPEND_USDC` | Tope acumulado por proceso; por defecto `0.10`. |
 | `X402_ALLOWED_HOSTS` | Lista separada por comas de hosts HTTPS externos que la herramienta puede pagar. |
 | `X402_ALLOW_LOCALHOST` | Permite `localhost` solo en desarrollo. Se desactiva en producción. |
+| `VECTOR52_API_URL` | URL base de `v52-backend`; local con `X402_ALLOW_LOCALHOST=true` o HTTPS desplegado con su host en `X402_ALLOWED_HOSTS`. |
 
 El contrato de USDC Fuji configurado es `0x5425890298aed601595a70AB815c96711a31Bc65` y usa 6 decimales. Los tokens de testnet no tienen valor real; consulta la [documentación de Circle](https://developers.circle.com/stablecoins/usdc-contract-addresses).
 
@@ -109,6 +115,7 @@ El contrato de USDC Fuji configurado es `0x5425890298aed601595a70AB815c96711a31B
 | `estado_servidor` | `{}` | Devuelve estado y timestamp. |
 | `avalanche_x402_status` | `{}` | Muestra configuración pública, dirección del agente y balances. No firma ni paga. |
 | `avalanche_x402_fetch` | `{ "url": "…", "maxPaymentUsdc": "0.01" }` | Solicita un recurso x402 permitido y puede efectuar un pago. |
+| `vector52_wallet_flow` | `{ "targetAddress": "0x...", "limit": 10, "maxPaymentUsdc": "0.001" }` | Llama `POST /v1/agent/investigations/wallet-flow` en `VECTOR52_API_URL` y paga con x402 si el challenge cumple la política. |
 
 `maxPaymentUsdc` es opcional, pero solo puede disminuir el tope configurado en el servidor; nunca aumentarlo.
 
@@ -180,6 +187,28 @@ Para probar la herramienta gratuita:
 
 ```text
 Usa saludar con nombre "Vector52".
+```
+
+Para probar `v52-backend` local:
+
+```dotenv
+VECTOR52_API_URL=http://127.0.0.1:8000
+X402_ALLOW_LOCALHOST=true
+X402_ALLOWED_HOSTS=
+```
+
+Para probar `v52-backend` desplegado:
+
+```dotenv
+VECTOR52_API_URL=https://v52-backend.onrender.com
+X402_ALLOW_LOCALHOST=false
+X402_ALLOWED_HOSTS=v52-backend.onrender.com
+```
+
+Y desde Codex:
+
+```text
+Usa vector52_wallet_flow con targetAddress "0x..." y maxPaymentUsdc "0.001".
 ```
 
 Para la prueba pagada local, que cuesta `0.01 USDC` de prueba:
