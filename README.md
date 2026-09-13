@@ -1,163 +1,168 @@
-# v52-mcp
+![Vector52 MCP Server Banner](docs/banner.jpg)
 
-Servidor MCP (Model Context Protocol) de Vector52 para clientes **locales**, con transporte `stdio`.
+<div align="center">
 
-> Estado: preparado para desarrollo y pruebas en **Avalanche Fuji**. No uses claves ni fondos reales.
+# 🤖 Vector52 MCP Server — Model Context Protocol with Autonomous x402 Micropayments
 
-## Qué incluye
+**"Autonomous Web3 Forensic Audit Agent Server over stdio JSON-RPC"**
 
-- Transporte MCP `stdio` (entrada/salida estándar): el cliente MCP lanza el proceso y habla JSON-RPC por `stdin`/`stdout`.
-- Herramientas de producto: `vector52_status` y `vector52_wallet_flow`.
-- Herramientas gratuitas del contrato MCP: `case_status`, `evidence_get`, `anchor_lookup` y `package_verify`.
-- Herramientas de diagnóstico: `avalanche_x402_status` y `avalanche_x402_fetch`.
-- Política local que valida red, token, precio, destinatario y URL antes de firmar.
+[![Node.js >=22](https://img.shields.io/badge/Node.js-%3E%3D22-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![MCP Spec](https://img.shields.io/badge/MCP-Stdio%20Transport-FF6B6B?style=for-the-badge)](https://modelcontextprotocol.io/)
+[![x402 Protocol](https://img.shields.io/badge/x402_v2-Micropayments-8C8C8C?style=for-the-badge&logo=avalanche&logoColor=white)](https://x402.org/)
+[![Avalanche Fuji](https://img.shields.io/badge/Avalanche-Fuji%20Testnet-E84142?style=for-the-badge&logo=avalanche&logoColor=white)](https://subnets.avax.network/c-chain)
+[![USDC Fuji](https://img.shields.io/badge/Asset-USDC%20Fuji-2775CA?style=for-the-badge&logo=usd-coin&logoColor=white)](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+[![npm version](https://img.shields.io/badge/npm-v1.1.1-CB3837?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/v52-mcp)
+[![License](https://img.shields.io/badge/License-ISC-blue?style=for-the-badge)](LICENSE)
 
-## Arquitectura
+</div>
 
-```text
-Cliente MCP local (Claude Desktop, Codex CLI, etc.)
-        |
-        | stdio (stdin/stdout, JSON-RPC)
-        v
-v52-mcp ── vector52_wallet_flow ──> v52-backend
-   |                                      |
-   |                                      | HTTP 402 + PAYMENT-REQUIRED
-   |                                      v
-   └── wallet de agente ──> facilitator ──> Avalanche Fuji
-                                               |
-                                               v
-                                          HTTP 200 + reporte
+---
+
+## 📑 Table of Contents
+
+1. [Executive Summary](#-executive-summary)
+2. [Architecture & Transport Model](#-architecture--transport-model)
+3. [Autonomous x402 Micropayment Flow](#-autonomous-x402-micropayment-flow)
+4. [Tool Catalog & Reference Matrix](#-tool-catalog--reference-matrix)
+5. [Environment Variables & Security Policy](#-environment-variables--security-policy)
+6. [Client Integration Guide](#-client-integration-guide)
+   - [Claude Desktop / Claude Code](#1-claude-desktop--claude-code)
+   - [Cursor IDE](#2-cursor-ide)
+   - [Codex CLI](#3-codex-cli)
+7. [Local Testing Fixtures (x402 Standalone Flow)](#-local-testing-fixtures-x402-standalone-flow)
+8. [Troubleshooting & Diagnostic Matrix](#-troubleshooting--diagnostic-matrix)
+9. [Project Scripts & Commands](#-project-scripts--commands)
+10. [References & Ecosystem Links](#-references--ecosystem-links)
+
+---
+
+## 🚀 Executive Summary
+
+**`v52-mcp`** is the official **Model Context Protocol (MCP)** server for **Vector52**. It allows local AI Assistants (such as **Claude Desktop**, **Claude Code**, **Cursor**, and **Codex CLI**) to perform deep forensic audits, inspect raw transaction evidence, verify package integrity, and anchor cryptographic proofs directly on EVM blockchains.
+
+### Core Highlights
+- **Zero Open Ports (`stdio` Transport):** Spawns exclusively as a local sub-process communicating via `stdin`/`stdout` JSON-RPC messages. No network listeners or open inbound ports.
+- **Autonomous Agent Micropayments (`x402` v2):** Integrates non-custodial EVM signing (`X402_AGENT_PRIVATE_KEY`) to pay micro-fees per forensic request on **Avalanche Fuji Testnet** using USDC (`0x5425890298aed601595a70AB815c96711a31Bc65`).
+- **Free & Paid Tools:** Offers free tools for status inspection, HashKey Chain (HSK) anchor lookups, and container ZIP validation alongside paid x402 forensic flow execution tools.
+- **Strict Security Guardrails:** Local policy enforcement rejects unauthorized host destinations, price spikes, wrong asset tokens, or non-Fuji networks before signing any transaction payload.
+
+---
+
+## 📐 Architecture & Transport Model
+
+```mermaid
+graph TD
+    A[Local AI Client<br/>Claude Desktop / Cursor / Codex] -->|stdio JSON-RPC stdin/stdout| B[v52-mcp Local Subprocess]
+    
+    B -->|1. HTTP Request| C[Vector52 Backend<br/>v52-backend.onrender.com]
+    C -->|2. HTTP 402 Payment Required| B
+    
+    B -->|3. Local Security Validation & EIP-3009 Signature| B
+    B -->|4. Request + X-Payment Header| C
+    
+    C -->|5. Verify & Settle| D[x402 Facilitator / Avalanche Fuji]
+    C -->|6. 200 OK + Forensic Report| B
+    B -->|7. JSON-RPC Result| A
 ```
 
-El proceso `v52-mcp` no abre ningún puerto ni acepta conexiones de red entrantes: el cliente MCP lo lanza como subproceso local y se comunica exclusivamente por `stdin`/`stdout`. Las únicas conexiones de red que hace el propio proceso son salientes: hacia el backend de Vector52, el facilitator x402 y el RPC de Avalanche Fuji.
+### Stdio Isolation & Logging Integrity
+To ensure absolute compatibility with the Model Context Protocol specification:
+- **`stdout` is strictly reserved for JSON-RPC messages.**
+- **All diagnostic logs, startup notifications, and debug traces are written to `stderr`** (when `X402_DEBUG=true`).
+- Any arbitrary `console.log()` calls inside server code are strictly avoided to prevent standard out stream corruption.
 
-La demo vende un reporte por `0.01 USDC` de prueba. El cliente recibe un `HTTP 402 Payment Required` (saliente, hacia el backend o el facilitator), valida localmente las condiciones y solo después firma una autorización EIP-3009. El facilitator verifica y liquida la operación en Fuji; la clave privada nunca se envía al facilitator ni a ningún tercero.
+---
 
-## Requisitos
+## 💳 Autonomous x402 Micropayment Flow
 
-- Node.js 22 o superior.
-- npm.
-- Una wallet EVM de **desarrollo** con AVAX Fuji (gas) y USDC Fuji de prueba para pagar.
-- Una dirección pública Fuji receptora para `X402_MERCHANT_ADDRESS` (solo necesaria para la demo local de pago).
-
-## Instalación y arranque
-
-Este servidor **no se ejecuta sobre HTTP**: no escuches ni abras ningún puerto para usarlo. Un cliente MCP local lo inicia como subproceso (ver "Conectar el MCP a un cliente local"). Hay dos formas de obtenerlo:
-
-**Opción A — vía npm (recomendada para usuarios finales), sin clonar el repo:**
-
-```bash
-npx -y v52-mcp
+```mermaid
+sequenceDiagram
+    autonumber
+    actor AI as AI Assistant (Claude / Codex)
+    participant MCP as v52-mcp Server
+    participant Backend as Vector52 Backend
+    participant Relayer as OZ Relayer (Avalanche Fuji)
+    
+    AI->>MCP: Call tool: vector52_wallet_flow(targetAddress, limit)
+    MCP->>Backend: POST /v1/agent/investigations/wallet-flow
+    Backend-->>MCP: HTTP 402 Payment Required (Payment Specs, Price: 1000 atomic units)
+    
+    Note over MCP: Local Policy Check: Validate Network (43113), Asset (USDC), Price Ceiling
+    
+    MCP->>MCP: Sign EIP-3009 Transfer Authorization (X402_AGENT_PRIVATE_KEY)
+    MCP->>Backend: POST /v1/agent/investigations/wallet-flow (Header: X-Payment)
+    Backend->>Relayer: Submit & Settle Payment on-chain
+    Relayer-->>Backend: 200 OK Payment Settled
+    Backend-->>MCP: 200 OK (Case ID, Acquired Transfers & Provenance)
+    MCP-->>AI: Return Formatted Forensic Report
 ```
 
-Un cliente MCP normalmente no lo ejecutas tú a mano: solo configuras `command: "npx", args: ["-y", "v52-mcp"]` en tu cliente (ver "Conectar el MCP a un cliente local") y él lo descarga y lanza automáticamente.
+> 🔒 **Non-Custodial Guarantee:** Private keys (`X402_AGENT_PRIVATE_KEY`) are kept entirely in local memory inside the `v52-mcp` sub-process. Neither the backend API nor the facilitator ever sees or handles the private key.
 
-**Opción B — clonando el repositorio (para desarrollo):**
+---
 
-```bash
-git clone https://github.com/v52-Chain/v52-mcp.git
-cd v52-mcp
-cp .env.example .env
-npm install
-npm run build
+## 🛠️ Tool Catalog & Reference Matrix
+
+The server exposes 10 specialized tools divided into Product/Forensic tools, Free Vector52 Read tools, and Utility/Diagnostic tools:
+
+| Tool Name | Input Parameters | Description & Target Endpoint | Payment Requirement |
+| :--- | :--- | :--- | :--- |
+| 🛡️ `vector52_status` | `{}` | Checks MCP server health, backend status, current flow price, and wallet AVAX/USDC balances without spending funds. | **Free** |
+| 🔍 `vector52_wallet_flow` | `{ "targetAddress": "0x…", "limit": 25 }` | Discovers pricing and executes a paid forensic wallet investigation via `v52-backend`. | **x402 Paid** (~0.01 USDC) |
+| 📊 `case_status` | `{ "caseId": "v52_..." }` | Fetches metadata and status of a persisted case from `GET /v1/cases/{case_id}`. | **Free** |
+| 📁 `evidence_get` | `{ "caseId": "v52_..." }` | Lists raw evidence files and SHA-256 hashes from `GET /v1/cases/{case_id}/evidence`. | **Free** |
+| ⚓ `anchor_lookup` | `{ "manifestRoot": "0x..." }` | Queries HashKey Chain (HSK Testnet) on-chain proof from `GET /v1/anchors/{manifest_root}`. | **Free** |
+| 📦 `package_verify` | `{ "fileBase64": "...", "fileName": "case.v52.zip" }` | Uploads `.v52.zip` Base64 data to `POST /v1/verify` and returns cryptographic integrity status (`PASS`/`FAIL`). | **Free** |
+| 💳 `avalanche_x402_status` | `{}` | Displays public config, agent wallet address, and network balances without signing or spending. | **Free** |
+| 🌐 `avalanche_x402_fetch` | `{ "url": "…", "maxPaymentUsdc": "0.01" }` | Sends a generic payment-capable HTTP request to an allowlisted x402 endpoint. | **x402 Paid** |
+| 👋 `saludar` | `{ "nombre": "Ana" }` | Returns a friendly greeting string (Useful for connection testing). | **Free** |
+| ⚡ `estado_servidor` | `{}` | Returns server operational status and current ISO timestamp. | **Free** |
+
+---
+
+## ⚙️ Environment Variables & Security Policy
+
+Configure parameters in your local `.env` file (or pass directly in your client's MCP configuration):
+
+```env
+# ── Primary Agent Wallet (Required for Paid Tools) ───────────────────────────
+X402_AGENT_PRIVATE_KEY=0x_your_64_hex_character_testnet_private_key
+
+# ── Network & RPC Settings (Optional Defaults) ──────────────────────────────
+AVALANCHE_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
+
+# ── Spending Limits & Safety Guardrails ─────────────────────────────────────
+X402_MAX_PAYMENT_USDC=0.05
+X402_MAX_SESSION_SPEND_USDC=0.10
+
+# ── Network Security & Host Allowlisting ────────────────────────────────────
+X402_ALLOWED_HOSTS=
+X402_ALLOW_LOCALHOST=false
+X402_DEBUG=false
 ```
 
-Para probarlo manualmente desde una terminal (sin cliente MCP), puedes enviarle mensajes JSON-RPC delimitados por línea por `stdin`:
+### Hardcoded Constants & Target Endpoints
+- **Target Backend:** `https://v52-backend.onrender.com` (Hardcoded in `src/vector52/backend.ts`).
+- **Avalanche Fuji Chain ID:** `43113` (`eip155:43113`).
+- **USDC Fuji Contract:** `0x5425890298aed601595a70AB815c96711a31Bc65` (6 decimals).
 
-```bash
-node dist/index.js
-```
+### Local Policy Security Checks
+Before signing any payment header, `v52-mcp` automatically enforces:
+1. Rejection of any network other than Avalanche Fuji Testnet.
+2. Rejection of unapproved asset tokens or mismatched merchant recipient addresses.
+3. Enforcement of price ceilings (`X402_MAX_PAYMENT_USDC` per tx, `X402_MAX_SESSION_SPEND_USDC` cumulative per process session).
+4. Host allowlist filtering (rejecting non-allowlisted HTTPS hosts, `file://` URIs, or internal IP ranges).
 
-El proceso se queda a la espera leyendo `stdin`. Los logs de diagnóstico (si `X402_DEBUG=true`) y el aviso de arranque se escriben en `stderr`, nunca en `stdout`, para no interferir con el protocolo JSON-RPC.
+---
 
-## Configuración (variables de entorno)
+## 💻 Client Integration Guide
 
-`.env` es privado y está ignorado por Git. Parte siempre de [`.env.example`](.env.example). Todas las claves y parámetros sensibles se leen del entorno del proceso; el servidor nunca acepta una llave privada u otro secreto a través de una petición.
+### 1. Claude Desktop / Claude Code
 
-**En la práctica, solo existe una variable que de verdad necesitas configurar:**
+Add `v52_mcp` to your `claude_desktop_config.json`:
 
-```dotenv
-X402_AGENT_PRIVATE_KEY=0x...
-```
-
-Sin ella, el servidor arranca igual y todas las tools gratuitas funcionan (`saludar`, `estado_servidor`, `case_status`, `evidence_get`, `anchor_lookup`, `package_verify`); solo quedan deshabilitadas las que pagan (`vector52_wallet_flow`, `avalanche_x402_fetch`).
-
-Red, chain ID, el contrato USDC de Fuji **y el backend de Vector52** no son configurables: están fijos en el código porque solo existe un valor válido/soportado para cada uno. No son variables de entorno "inútiles" que sobrevivieron por descuido — directamente no existen.
-
-| Variable | Propósito | Requerida |
-| --- | --- | --- |
-| `X402_AGENT_PRIVATE_KEY` | Clave privada que firma los pagos x402. Este servidor es el **cliente/pagador** (el agente), nunca el backend: la firma tiene que ocurrir aquí porque x402 es no-custodial y nadie firma en tu nombre. Debe pertenecer solo a una wallet de prueba. | **Sí**, es la única variable que necesitas para pagar (`vector52_wallet_flow`, `avalanche_x402_fetch`). |
-| `AVALANCHE_RPC_URL` | RPC de Fuji. | No — tiene un endpoint público por defecto; solo cámbialo si está limitado o quieres tu propio proveedor. |
-| `X402_MAX_PAYMENT_USDC` / `X402_MAX_SESSION_SPEND_USDC` | Topes de seguridad por pago / por proceso. | No, ya tienen default (`0.05` / `0.10`). |
-| `X402_ALLOWED_HOSTS` | Hosts HTTPS externos (además del backend de Vector52) que `avalanche_x402_fetch` puede pagar. | No, vacío por defecto (nada externo permitido). |
-| `X402_ALLOW_LOCALHOST` | Permite `localhost` como destino de pago — solo relevante para el fixture local de abajo. | No. |
-| `X402_DEBUG` | Escribe trazas de diagnóstico x402 en `stderr` (nunca en `stdout`). | No. |
-
-El backend que consumen todas las tools de Vector52 (`case_status`, `evidence_get`, `anchor_lookup`, `package_verify`, `vector52_wallet_flow`, `vector52_status`) es siempre `https://v52-backend.onrender.com` — hardcodeado en `src/vector52/backend.ts`, no lo elige el prompt del agente ni una variable de entorno.
-
-**Solo si vas a correr el fixture local de pruebas** (`npm run x402:demo` / `x402:test`, ver la siguiente sección) — nunca los usa el servidor MCP ni sus tools:
-
-| Variable | Propósito |
-| --- | --- |
-| `X402_FACILITATOR_URL` | Facilitator que verifica y liquida el pago **del fixture local**. En producción, `v52-backend` habla con su propio facilitator del lado servidor; este MCP nunca se conecta a uno directamente — solo firma y reenvía la petición HTTP. |
-| `X402_MERCHANT_ADDRESS` | Dirección que recibe el pago **en el fixture local**. En el flujo real el `payTo` lo entrega dinámicamente `v52-backend` en su respuesta `402`; nunca sale de tu `.env`. |
-| `X402_DEMO_URL` / `X402_DEMO_PORT` | Dónde escucha el fixture local. |
-
-El contrato USDC de Fuji usado internamente es `0x5425890298aed601595a70AB815c96711a31Bc65` (6 decimales, hardcodeado). Los tokens de testnet no tienen valor real; consulta la [documentación de Circle](https://developers.circle.com/stablecoins/usdc-contract-addresses).
-
-## Herramientas MCP
-
-| Herramienta | Entrada | Efecto |
-| --- | --- | --- |
-| `saludar` | `{ "nombre": "Ana" }` | Devuelve un saludo. |
-| `estado_servidor` | `{}` | Devuelve estado y timestamp. |
-| `vector52_status` | `{}` | Verifica MCP, backend, precio y saldo sin pagar. |
-| `vector52_wallet_flow` | `{ "targetAddress": "0x…", "limit": 25 }` | Descubre el precio y ejecuta una investigación pagada por x402. |
-| `avalanche_x402_status` | `{}` | Muestra configuración pública, dirección del agente y balances. No firma ni paga. |
-| `avalanche_x402_fetch` | `{ "url": "…", "maxPaymentUsdc": "0.01" }` | Solicita un recurso x402 permitido y puede efectuar un pago. |
-| `case_status` | `{ "caseId": "v52_..." }` | Llama `GET /v1/cases/{case_id}` en el backend de Vector52. Gratuito, sin pago. |
-| `evidence_get` | `{ "caseId": "v52_..." }` | Llama `GET /v1/cases/{case_id}/evidence` en el backend de Vector52. Gratuito, sin pago. |
-| `anchor_lookup` | `{ "manifestRoot": "0x..." }` | Llama `GET /v1/anchors/{manifest_root}` en el backend de Vector52. Consulta pública sobre HSK, gratuita, sin pago ni llave firmante. |
-| `package_verify` | `{ "fileBase64": "...", "fileName": "case.v52.zip" }` | Sube el `.v52.zip` (Base64) a `POST /v1/verify` en el backend de Vector52 y devuelve `PASS`/`FAIL` con los errores de integridad. Gratuito, sin pago. |
-
-`maxPaymentUsdc` es opcional, pero solo puede disminuir el tope configurado en el servidor; nunca aumentarlo. Para integración de producto usa `vector52_wallet_flow`: la herramienta genérica queda solo para diagnóstico.
-
-De los 6 tools documentados en `CONTRATO-INTEGRACION.md` ("MCP mapping"), `edge_explain` y `claim_audit` **no** están implementados todavía: el backend no expone `GET /v1/cases/{id}/graph` ni un `POST /v1/paid/claim-audit` protegido con x402 (ver `v52-backend/docs/X402_MCP.md` §1, Nivel 3 "documentado pero no implementado en código"). Se agregarán cuando esos endpoints existan del lado del backend.
-
-## Probar x402 localmente (sin un cliente MCP)
-
-El servidor MCP en sí no expone HTTP, así que hay un pequeño fixture separado (`src/scripts/serve-x402-demo.ts`) solo para pruebas manuales del flujo de pago x402.
-
-En una terminal, levanta el fixture de pago:
-
-```bash
-npm run x402:demo
-```
-
-En otra terminal, comprueba el challenge sin pagar:
-
-```bash
-curl -i http://localhost:8080/demo/x402/premium-report
-```
-
-La respuesta correcta es `HTTP/1.1 402 Payment Required` e incluye el header `PAYMENT-REQUIRED`.
-
-Cuando la wallet de agente tenga AVAX Fuji y USDC Fuji de prueba, realiza el recorrido completo (con el fixture anterior aún corriendo):
-
-```bash
-npm run x402:test
-```
-
-Esta orden firma y liquida **0.01 USDC de prueba**. Una ejecución correcta termina con `TEST PASSED`, un `HTTP 200` y, cuando el facilitator lo devuelve, un hash de transacción.
-
-## Conectar el MCP a un cliente local
-
-Este servidor habla `stdio`: el cliente MCP lo lanza como subproceso y le habla por `stdin`/`stdout`. No hay URL ni puerto que configurar. La forma recomendada para cualquier usuario (sin clonar el repo) es vía `npx`.
-
-### Claude Desktop / Claude Code / Codex, vía npx (recomendado)
-
-Edita la configuración de servidores MCP del cliente (`claude_desktop_config.json`, o el `[mcp_servers]` de Codex) y añade:
-
+#### Option A: Zero-Install via `npx` (Recommended for Users)
 ```json
 {
   "mcpServers": {
@@ -165,40 +170,59 @@ Edita la configuración de servidores MCP del cliente (`claude_desktop_config.js
       "command": "npx",
       "args": ["-y", "v52-mcp"],
       "env": {
-        "X402_AGENT_PRIVATE_KEY": "0x..."
+        "X402_AGENT_PRIVATE_KEY": "0x_your_testnet_private_key_here"
       }
     }
   }
 }
 ```
 
-`npx` descarga y cachea la versión publicada de `v52-mcp` la primera vez y la reutiliza después; no necesitas instalar nada a mano ni mantener una ruta local. Sin `X402_AGENT_PRIVATE_KEY` el servidor arranca igual: solo quedan deshabilitadas las tools que pagan (`vector52_wallet_flow`, `avalanche_x402_fetch`), el resto funciona sin configuración.
-
-Reinicia la aplicación después de guardar.
-
-### Desde el repositorio clonado (desarrollo)
-
-Si estás desarrollando sobre este repo en vez de usar el paquete publicado, apunta directo al `dist/index.js` compilado:
-
+#### Option B: From Source Repository (Developers)
 ```json
 {
   "mcpServers": {
     "v52_mcp": {
       "command": "node",
-      "args": ["/ruta/absoluta/a/v52-mcp/dist/index.js"],
+      "args": ["/absolute/path/to/v52-mcp/dist/index.js"],
       "env": {
-        "X402_AGENT_PRIVATE_KEY": "0x..."
+        "X402_AGENT_PRIVATE_KEY": "0x_your_testnet_private_key_here"
       }
     }
   }
 }
 ```
 
-Recuerda correr `npm run build` cada vez que cambies el código, para que `dist/index.js` quede actualizado.
+---
 
-### Codex CLI (`config.toml`)
+### 2. Cursor IDE
 
-Codex también admite servidores MCP locales lanzados por comando. Añade en `~/.codex/config.toml` (o en `.codex/config.toml` del proyecto):
+In Cursor IDE, navigate to **Settings -> Features -> MCP** and add a new MCP server:
+
+- **Name:** `v52_mcp`
+- **Type:** `command`
+- **Command:** `npx -y v52-mcp`
+- **Environment Variables:** `X402_AGENT_PRIVATE_KEY=0x...`
+
+Alternatively, configure `.cursor/mcp.json` in your workspace:
+```json
+{
+  "mcpServers": {
+    "v52_mcp": {
+      "command": "npx",
+      "args": ["-y", "v52-mcp"],
+      "env": {
+        "X402_AGENT_PRIVATE_KEY": "0x_your_testnet_private_key_here"
+      }
+    }
+  }
+}
+```
+
+---
+
+### 3. Codex CLI
+
+Add the server to `~/.codex/config.toml` (or project `.codex/config.toml`):
 
 ```toml
 [mcp_servers.v52_mcp]
@@ -209,66 +233,90 @@ tool_timeout_sec = 60
 default_tools_approval_mode = "prompt"
 
 [mcp_servers.v52_mcp.env]
-X402_AGENT_PRIVATE_KEY = "0x..."
+X402_AGENT_PRIVATE_KEY = "0x_your_testnet_private_key_here"
 
-# La consulta de estado no gasta fondos.
 [mcp_servers.v52_mcp.tools.avalanche_x402_status]
 approval_mode = "approve"
 ```
 
-Reinicia Codex después de guardar. En Codex, usa `/mcp` para confirmar que `v52_mcp` aparece conectado.
+Verify connection in Codex CLI using `/mcp`.
 
-### Usar las herramientas
+---
 
-Primero verifica el estado sin realizar pagos:
+## 🧪 Local Testing Fixtures (x402 Standalone Flow)
 
-```text
-Usa la herramienta avalanche_x402_status y muéstrame el estado público de Avalanche Fuji.
+`v52-mcp` includes a standalone HTTP 402 test fixture in `src/scripts/serve-x402-demo.ts` so you can verify x402 payment signing without running a full AI client.
+
+### Step 1: Start the Local Payment Server Fixture
+```bash
+npm run x402:demo
 ```
 
-Para probar la herramienta gratuita:
-
-```text
-Usa saludar con nombre "Vector52".
+### Step 2: Test Unpaid Challenge (In a second terminal)
+```bash
+curl -i http://localhost:8080/demo/x402/premium-report
 ```
+Expected output: `HTTP/1.1 402 Payment Required` header containing `PAYMENT-REQUIRED` JSON spec.
 
-No configures `avalanche_x402_fetch` ni `vector52_wallet_flow` con aprobación automática: pueden firmar un pago. El cliente MCP debe pedir confirmación antes de ejecutarlas.
+### Step 3: Run Full Paid Settlement Test
+Ensure your wallet has Avalanche Fuji testnet AVAX and testnet USDC:
+```bash
+npm run x402:test
+```
+Expected output: Executes a `0.01 USDC` test transaction on Fuji, concluding with `TEST PASSED` and printing the settlement transaction hash.
 
-## Política de pago y seguridad
+---
 
-Antes de firmar, `avalanche_x402_fetch` rechaza:
+## 🔍 Troubleshooting & Diagnostic Matrix
 
-- una red distinta de Avalanche Fuji (`eip155:43113`);
-- activos distintos al USDC Fuji configurado;
-- requisitos x402 malformados;
-- precios superiores a los límites definidos;
-- URLs `file:`, hosts privados o de loopback no permitidos y hosts HTTPS fuera de `X402_ALLOWED_HOSTS`;
-- destinatarios o tiempos de expiración inválidos.
+| Symptom or Error Message | Probable Root Cause | Recommended Action |
+| :--- | :--- | :--- |
+| `X402_AGENT_PRIVATE_KEY must be a valid EVM private key` | Missing `0x` prefix, wrong length, or public key pasted by mistake. | Ensure key starts with `0x` followed by exactly 64 hexadecimal characters. |
+| MCP Client stays on "Connecting..." or missing tools | Server sub-process failed to start or `dist/index.js` is uncompiled. | Run `npm run build` and verify absolute pathing in your MCP config. |
+| `HTTP 503` during `npm run x402:demo` | Missing local test fixture variables (`X402_FACILITATOR_URL` / `X402_MERCHANT_ADDRESS`). | Check `.env` and restart `npm run x402:demo`. |
+| `USDC balance: 0` | Wallet lacks testnet USDC on Avalanche Fuji. | Request free testnet USDC from the [Circle Faucet](https://faucet.circle.com/). |
+| `URL_REJECTED` | Target host is not on the security allowlist. | Add the target hostname to `X402_ALLOWED_HOSTS` in `.env`. |
+| MCP Client fails to parse JSON-RPC response | Arbitrary `console.log` output printed to `stdout`. | Ensure all server logging uses `console.error` (writing to `stderr`). |
 
-La clave privada y las firmas no se incluyen en la salida de las herramientas. El límite por sesión se mantiene en memoria del proceso; para múltiples réplicas se requiere un control de gasto transaccional compartido antes de usar fondos o límites de producción.
+---
 
-Si alguna clave privada se expone, considérala comprometida: crea una wallet de prueba nueva y no vuelvas a usarla.
-
-## Validación del proyecto
+## 📜 Project Scripts & Commands
 
 ```bash
+# Compile TypeScript to dist/index.js and set executable permissions
 npm run build
+
+# Run unit and integration tests
 npm test
+
+# Run MCP server directly in TypeScript development mode
+npm run dev
+
+# Start local x402 HTTP 402 test server fixture
+npm run x402:demo
+
+# Execute automated x402 payment settlement test script
+npm run x402:test
+
+# Start production compiled server (node dist/index.js)
+npm start
 ```
 
-## Diagnóstico rápido
+---
 
-| Mensaje o síntoma | Causa probable | Acción |
-| --- | --- | --- |
-| `X402_AGENT_PRIVATE_KEY debe ser una clave privada EVM válida` | Falta el prefijo `0x`, la clave no tiene 64 caracteres hexadecimales o se pegó una dirección pública. | Usa una wallet nueva de prueba y configura `0x` + 64 caracteres. |
-| El cliente MCP no ve ninguna tool / se queda "conectando" | El cliente no está lanzando el proceso correctamente o `dist/index.js` no existe todavía. | Corre `npm run build` y verifica la ruta absoluta en `command`/`args`. |
-| `HTTP 503` en el fixture de `npm run x402:demo` | Faltan `X402_FACILITATOR_URL` o `X402_MERCHANT_ADDRESS` (solo las necesita el fixture local, no el servidor MCP). | Revisa `.env` y reinicia `npm run x402:demo`. |
-| `USDC: 0` | La wallet no tiene USDC Fuji. | Solicita USDC de prueba en el faucet de Circle. |
-| `URL_REJECTED` | El host externo no está en la lista permitida. | Añade el hostname exacto a `X402_ALLOWED_HOSTS`; para local usa solo desarrollo. |
-| Aparece salida no-JSON en `stdout` y el cliente MCP falla al parsear | Algún código nuevo llamó a `console.log`/`console.info` dentro del proceso del servidor. | Usa siempre `console.error` (stderr) para logs; `stdout` está reservado para JSON-RPC. |
+## 🔗 References & Ecosystem Links
 
-## Referencias
+- 📖 [Model Context Protocol Specification — Stdio Transport](https://modelcontextprotocol.io/docs/concepts/transports)
+- 💧 [Circle USDC Contract Addresses — Avalanche Fuji](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+- ⚡ [x402 Protocol Specification](https://x402.org/)
+- 📑 [Vector52 Backend API Specification](https://v52-backend.onrender.com/docs)
+- 🧪 [Detailed Local x402 Test Guide](docs/X402_AVALANCHE_TEST.md)
 
-- [Especificación MCP — transporte stdio](https://modelcontextprotocol.io/docs/concepts/transports)
-- [USDC en Avalanche Fuji — Circle](https://developers.circle.com/stablecoins/usdc-contract-addresses)
-- [Guía de pruebas x402 de este proyecto](docs/X402_AVALANCHE_TEST.md)
+---
+
+<div align="center">
+
+**Vector52 MCP Server — Autonomous Web3 AI Forensic Agent Transport**  
+*Licensed under the [ISC License](LICENSE).*
+
+</div>
