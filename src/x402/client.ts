@@ -56,13 +56,26 @@ const safeFetch: typeof fetch = (input, init) =>
 export async function fetchX402Resource(input: {
   url: string;
   maxPaymentUsdc?: string;
+  method?: "GET" | "POST";
+  body?: unknown;
 }): Promise<X402FetchResult> {
   const config = loadX402Config();
   requireX402ClientConfig(config);
   const url = assertAllowedResourceUrl(input.url, config);
 
-  logX402(config.debug, "Requesting resource", { url: url.toString() });
-  const firstResponse = await safeFetch(url, { headers: { accept: "application/json" } });
+  const method = input.method ?? "GET";
+  const hasBody = method !== "GET" && input.body !== undefined;
+  const requestInit: RequestInit = {
+    method,
+    headers: {
+      accept: "application/json",
+      ...(hasBody ? { "content-type": "application/json" } : {}),
+    },
+    ...(hasBody ? { body: JSON.stringify(input.body) } : {}),
+  };
+
+  logX402(config.debug, "Requesting resource", { url: url.toString(), method });
+  const firstResponse = await safeFetch(url, requestInit);
   if (firstResponse.status === 200) {
     return {
       success: true,
@@ -164,7 +177,7 @@ export async function fetchX402Resource(input: {
 
     const paidFetch = wrapFetchWithPayment(safeFetch, client);
     logX402(config.debug, "Sending payment proof");
-    const paidResponse = await paidFetch(url, { headers: { accept: "application/json" } });
+    const paidResponse = await paidFetch(url, requestInit);
 
     if (!paidResponse.ok) {
       throw new X402Error(

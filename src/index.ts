@@ -87,11 +87,21 @@ function createJhamilMcp() {
           .regex(/^\d+(?:\.\d{1,6})?$/)
           .optional()
           .describe("Límite opcional del solicitante; nunca puede aumentar el límite del servidor."),
+        method: z
+          .enum(["GET", "POST"])
+          .optional()
+          .describe(
+            "Método HTTP del recurso. Por defecto GET. Usa POST para endpoints x402 que requieren body, como POST /v1/agent/investigations/wallet-flow de v52-backend.",
+          ),
+        body: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Cuerpo JSON opcional, solo aplicable cuando method es POST."),
       }),
     },
-    async ({ url, maxPaymentUsdc }) => {
+    async ({ url, maxPaymentUsdc, method, body }) => {
       try {
-        const result = await fetchX402Resource({ url, maxPaymentUsdc });
+        const result = await fetchX402Resource({ url, maxPaymentUsdc, method, body });
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
